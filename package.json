@@ -1,6 +1,6 @@
 {
   "name": "pi-show-diffs",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Pi package that adds a diff approval viewer before edit and write tools change files.",
   "keywords": [

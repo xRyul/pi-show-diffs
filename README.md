@@ -2,9 +2,6 @@
 
 A **pi** package that adds a diff approval flow before file changes are applied.
 
-- GitHub: https://github.com/xRyul/pi-show-diffs
-- npm: https://www.npmjs.com/package/pi-show-diffs
-
 ## What it does
 
 `pi-show-diffs` intercepts file-changing tools and opens a review modal before the change runs.
@@ -32,28 +29,16 @@ For normal file changes, the modal uses a split diff viewer with:
 
 ## Install
 
-### From npm
+Install from npm:
 
 ```bash
 pi install npm:pi-show-diffs
 ```
 
-### From GitHub
+Or install directly from GitHub:
 
 ```bash
 pi install git:github.com/xRyul/pi-show-diffs
-```
-
-### Local dev install
-
-```bash
-ln -s /Users/daniel/Developer/Projects/pi-show-diffs ~/.pi/agent/extensions/pi-show-diffs
-```
-
-Then inside **pi** run:
-
-```text
-/reload
 ```
 
 ## Commands
