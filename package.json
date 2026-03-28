@@ -1,0 +1,64 @@
+{
+  "name": "pi-show-diffs",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi package that adds a Warp.dev-style diff approval viewer before edit and write tools change files.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "diff",
+    "approval",
+    "review",
+    "warp-style"
+  ],
+  "author": "xRyul",
+  "license": "MIT",
+  "homepage": "https://github.com/xRyul/pi-show-diffs#readme",
+  "bugs": {
+    "url": "https://github.com/xRyul/pi-show-diffs/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xRyul/pi-show-diffs.git"
+  },
+  "files": [
+    "index.ts",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "cli-highlight": "^2.1.11",
+    "diff": "^8.0.2"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@mariozechner/pi-coding-agent": {
+      "optional": true
+    },
+    "@mariozechner/pi-tui": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "^0.58.1",
+    "@mariozechner/pi-tui": "^0.58.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}
