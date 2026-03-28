@@ -24,6 +24,7 @@ For normal file changes, the modal uses a split diff viewer with:
 - hunk-aware navigation
 - unified diff fallback for narrow terminals or preview errors
 - live toggle between split and unified views
+- inline editing for `edit` and `write` directly inside the diff modal
 - adjustable context expansion around hunks
 - wrapped inline rendering for long lines
 
@@ -59,6 +60,8 @@ Command args:
 
 - `Enter`, `a`, or `y` — approve
 - `r` or `Esc` — reject
+- `E` or `e` — enter inline edit mode for the updated side
+- `Esc` in inline edit mode — leave editing and return to review mode
 - `s` — steer and add feedback
 - `Shift+A` — approve and turn on auto-approve
 
@@ -92,6 +95,8 @@ Current config shape:
 
 ## Notes
 
+- no `edit`/`write` tool overrides are registered, so it stays compatible with other tool-wrapping extensions like `collapse-tools.ts`
 - non-interactive mode falls back to a text-based diff review flow
 - steering rejects the current proposal and sends your feedback back to the model
+- editing final file content blocks the current tool call and asks pi to re-issue the exact revised change
 - auto-approve restores normal behavior until you turn it off again
