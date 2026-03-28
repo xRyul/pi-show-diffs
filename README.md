@@ -14,6 +14,10 @@ It currently reviews:
 
 This gives **pi** an interactive pre-apply diff review step, so you can inspect the proposed change first and then decide whether to allow it.
 
+## Demo
+
+[![pi-show-diffs demo](https://cdn.jsdelivr.net/npm/pi-show-diffs@latest/demo/demo.gif)](https://cdn.jsdelivr.net/npm/pi-show-diffs@latest/demo/demo.mp4)
+
 ## Diff review UX
 
 For normal file changes, the modal uses a split diff viewer with:

@@ -1,6 +1,6 @@
 {
   "name": "pi-show-diffs",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "Pi package that adds a diff approval viewer before edit and write tools change files.",
   "keywords": [
@@ -23,7 +23,9 @@
   },
   "files": [
     "index.ts",
-    "src"
+    "src",
+    "demo/demo.mp4",
+    "demo/demo.gif"
   ],
   "publishConfig": {
     "access": "public"
@@ -34,7 +36,9 @@
   "pi": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "video": "https://cdn.jsdelivr.net/npm/pi-show-diffs@latest/demo/demo.mp4",
+    "image": "https://cdn.jsdelivr.net/npm/pi-show-diffs@latest/demo/demo.gif"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
