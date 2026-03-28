@@ -1,6 +1,6 @@
 # pi-show-diffs
 
-A **pi** package that gives you a **Warp.dev-style diff approval flow** before file changes are applied.
+A **pi** package that adds a diff approval flow before file changes are applied.
 
 - GitHub: https://github.com/xRyul/pi-show-diffs
 - npm: https://www.npmjs.com/package/pi-show-diffs
@@ -15,7 +15,7 @@ It currently reviews:
 - `hashline_edit`
 - `write`
 
-That makes **pi** feel closer to the change preview flow people like in **Warp / Warp.dev**: you can inspect the proposed diff first, then decide whether to allow it.
+This gives **pi** an interactive pre-apply diff review step, so you can inspect the proposed change first and then decide whether to allow it.
 
 ## Diff review UX
 

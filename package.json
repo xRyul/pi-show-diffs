@@ -1,15 +1,15 @@
 {
   "name": "pi-show-diffs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
-  "description": "Pi package that adds a Warp.dev-style diff approval viewer before edit and write tools change files.",
+  "description": "Pi package that adds a diff approval viewer before edit and write tools change files.",
   "keywords": [
     "pi-package",
     "pi-extension",
     "diff",
     "approval",
     "review",
-    "warp-style"
+    "side-by-side"
   ],
   "author": "xRyul",
   "license": "MIT",
