@@ -24,7 +24,7 @@ For normal file changes, the modal uses a split diff viewer with:
 - hunk-aware navigation
 - unified diff fallback for narrow terminals or preview errors
 - live toggle between split and unified views
-- inline editing for `edit` and `write` directly inside the diff modal
+- inline editing for `edit`, `write`, and valid `hashline_edit` previews directly inside the diff modal
 - adjustable context expansion around hunks
 - wrapped inline rendering for long lines
 
@@ -71,6 +71,7 @@ Command args:
 - `PgUp` / `PgDn` — jump by page
 - `Home` / `End` — jump to top/bottom
 - `n` / `p` — next / previous hunk
+- inline edit mode: `Ctrl+N` / `Ctrl+P` jump hunks; `Alt`/`Option` + `↑` / `↓` also works if your terminal is configured to send Alt
 
 ### View controls
 
@@ -100,3 +101,4 @@ Current config shape:
 - steering rejects the current proposal and sends your feedback back to the model
 - editing final file content blocks the current tool call and asks pi to re-issue the exact revised change
 - auto-approve restores normal behavior until you turn it off again
+- invalid `hashline_edit` previews (for example tag mismatches) skip the review modal and fall through to the tool's normal error handling

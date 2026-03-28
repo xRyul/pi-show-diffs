@@ -195,6 +195,15 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		}
 	}
 
+	function shouldSkipReview(preview: ChangePreview) {
+		if (preview.toolName !== "hashline_edit") return false;
+		if (!preview.previewError) return false;
+
+		// Hashline validation failures mean the real tool call will fail before changing
+		// the file, so showing an approval modal adds friction without any benefit.
+		return preview.beforeText === undefined || preview.afterText === undefined;
+	}
+
 	pi.registerCommand("diff-approval", {
 		description: "Toggle or inspect diff approval mode",
 		handler: handleCommand,
@@ -234,13 +243,17 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			return;
 		}
 
+		if (shouldSkipReview(preview)) {
+			return;
+		}
+
 		const hasPendingEditedChange = hasPendingEditedChangeForPath(preview.absolutePath);
 		if (config.autoApprove && !hasPendingEditedChange) {
 			return;
 		}
 
 		const decision = await reviewChangePreview(ctx, preview, {
-			allowAfterEdit: preview.toolName !== "hashline_edit",
+			allowAfterEdit: true,
 		});
 
 		if (decision.action === "approve_and_enable_auto") {
