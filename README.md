@@ -1,8 +1,8 @@
 # pi-show-diffs
 
-A **pi** package that adds a diff approval flow before file changes are applied.
+A **pi** package that shows a diff before file changes are applied.
 
-## What it does
+https://github.com/user-attachments/assets/67d60ce6-dd81-4f5b-a0ed-16f2829bfd22
 
 `pi-show-diffs` intercepts file-changing tools and opens a review modal before the change runs.
 
@@ -13,10 +13,6 @@ It currently reviews:
 - `write`
 
 This gives **pi** an interactive pre-apply diff review step, so you can inspect the proposed change first and then decide whether to allow it.
-
-## Demo
-
-[![pi-show-diffs demo](https://cdn.jsdelivr.net/npm/pi-show-diffs@latest/demo/demo.gif)](https://cdn.jsdelivr.net/npm/pi-show-diffs@latest/demo/demo.mp4)
 
 ## Diff review UX
 
