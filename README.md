@@ -99,6 +99,6 @@ Current config shape:
 - no `edit`/`write` tool overrides are registered, so it stays compatible with other tool-wrapping extensions like `collapse-tools.ts`
 - non-interactive mode falls back to a text-based diff review flow
 - steering rejects the current proposal and sends your feedback back to the model
-- editing final file content blocks the current tool call and asks pi to re-issue the exact revised change
+- editing final file content applies immediately for `edit`, `write`, and `hashline_edit` after the original tool call succeeds
 - auto-approve restores normal behavior until you turn it off again
 - invalid `hashline_edit` previews (for example tag mismatches) skip the review modal and fall through to the tool's normal error handling

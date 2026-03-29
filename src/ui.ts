@@ -59,6 +59,7 @@ interface ViewerLayout {
     hunkOffsets: number[];
     viewportHeight: number;
     maxScrollOffset: number;
+    scrollOffset: number;
     currentHunkIndex: number;
 }
 
@@ -965,6 +966,7 @@ class DiffViewer implements Component {
             hunkOffsets: content.hunkOffsets,
             viewportHeight,
             maxScrollOffset,
+            scrollOffset: clampedOffset,
             currentHunkIndex,
         };
     }
@@ -1095,11 +1097,11 @@ class DiffViewer implements Component {
     render(width: number): string[] {
         this.lastWidth = Math.max(1, width);
         const layout = this.buildLayout(this.lastWidth);
-        this.scrollOffset = clampNumber(this.scrollOffset, 0, layout.maxScrollOffset);
+        this.scrollOffset = layout.scrollOffset;
 
-        const visible = layout.contentLines.slice(this.scrollOffset, this.scrollOffset + layout.viewportHeight);
-        const linesAbove = this.scrollOffset;
-        const linesBelow = Math.max(0, layout.contentLines.length - (this.scrollOffset + visible.length));
+        const visible = layout.contentLines.slice(layout.scrollOffset, layout.scrollOffset + layout.viewportHeight);
+        const linesAbove = layout.scrollOffset;
+        const linesBelow = Math.max(0, layout.contentLines.length - (layout.scrollOffset + visible.length));
         const hunkInfo = layout.hunkOffsets.length > 0 ? `hunk ${layout.currentHunkIndex + 1}/${layout.hunkOffsets.length}` : "no hunks";
         const topIndicatorText = linesAbove > 0 ? `↑ ${pluralize("more line", linesAbove)} • ${hunkInfo}` : `Top of diff • ${hunkInfo}`;
         const bottomIndicatorText = linesBelow > 0 ? `↓ ${pluralize("more line", linesBelow)} • ${hunkInfo}` : `Bottom of diff • ${hunkInfo}`;

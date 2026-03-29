@@ -1,27 +1,32 @@
+import { Buffer } from "node:buffer";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { CONFIG_PATH, loadConfig, saveConfig, type DiffApprovalConfig } from "./src/config.js";
+import { detectLineEnding, generateDiffString, restoreLineEndings, stripBom } from "./src/diff-utils.js";
 import { computeChangePreview, type ChangePreview, type PreviewToolName } from "./src/preview.js";
 import { reviewChangePreview } from "./src/ui.js";
 
 const STATUS_KEY = "pi-show-diffs";
 const TOOL_CALL_REVIEWED_TOOLS = new Set<PreviewToolName>(["edit", "hashline_edit", "write"]);
 
-interface PendingEditedChange {
-	absolutePath: string;
+interface PendingImmediateApply {
+	preview: ChangePreview;
 	afterText: string;
 }
 
 export default function showDiffsExtension(pi: ExtensionAPI) {
 	let config = loadConfig();
-	let pendingEditedChanges: PendingEditedChange[] = [];
+	const pendingImmediateApplies = new Map<string, PendingImmediateApply>();
 
 	function refreshConfig() {
 		config = loadConfig();
 	}
 
-	function clearPendingEditedChanges() {
-		pendingEditedChanges = [];
+	function clearPendingState() {
+		pendingImmediateApplies.clear();
 	}
 
 	function updateStatus(ctx: ExtensionContext) {
@@ -131,53 +136,15 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		}
 	}
 
-	function queuePendingEditedChange(preview: ChangePreview, afterText: string) {
-		pendingEditedChanges = pendingEditedChanges.filter((item) => item.absolutePath !== preview.absolutePath);
-		pendingEditedChanges.unshift({ absolutePath: preview.absolutePath, afterText });
+	function queuePendingImmediateApply(toolCallId: string, preview: ChangePreview, afterText: string) {
+		pendingImmediateApplies.set(toolCallId, { preview, afterText });
 	}
 
-	function hasPendingEditedChangeForPath(absolutePath: string) {
-		return pendingEditedChanges.some((item) => item.absolutePath === absolutePath);
-	}
-
-	function clearPendingEditedChangeForPath(absolutePath: string) {
-		pendingEditedChanges = pendingEditedChanges.filter((item) => item.absolutePath !== absolutePath);
-	}
-
-	function consumePendingEditedChange(preview: ChangePreview) {
-		const index = pendingEditedChanges.findIndex(
-			(item) => item.absolutePath === preview.absolutePath && item.afterText === preview.afterText,
-		);
-		if (index === -1) return false;
-		pendingEditedChanges.splice(index, 1);
-		return true;
-	}
-
-	function sendEditedContentFeedback(preview: ChangePreview, afterText: string) {
-		const lineCount = afterText.split("\n").length;
-		const trailingNewlineNote = afterText.endsWith("\n")
-			? "The final content ends with a trailing newline."
-			: "The final content does not end with a trailing newline.";
-
-		try {
-			pi.sendUserMessage(
-				[
-					`I edited the proposed final contents for ${preview.path}.`,
-					"Apply exactly the final file content below and nothing else.",
-					`Path: ${preview.path}`,
-					`Expected final content: ${lineCount.toLocaleString()} line(s), ${afterText.length.toLocaleString()} chars.`,
-					trailingNewlineNote,
-					"<final_file_content>",
-					afterText,
-					"</final_file_content>",
-					"Use a single file-change tool call that produces exactly that final file content. Prefer replacing the full file contents if needed to preserve the exact text.",
-					"Do not retry the previous change unchanged.",
-				].join("\n\n"),
-				{ deliverAs: "steer" },
-			);
-		} catch {
-			// Best-effort; the block reason still gives the model useful context.
-		}
+	function consumePendingImmediateApply(toolCallId: string) {
+		const pending = pendingImmediateApplies.get(toolCallId);
+		if (!pending) return undefined;
+		pendingImmediateApplies.delete(toolCallId);
+		return pending;
 	}
 
 	function sendNoChangeFeedback(preview: ChangePreview) {
@@ -204,6 +171,43 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		return preview.beforeText === undefined || preview.afterText === undefined;
 	}
 
+	async function restoreReviewedFinalContent(absolutePath: string, afterText: string) {
+		try {
+			const raw = (await readFile(absolutePath)).toString("utf-8");
+			const { bom, text } = stripBom(raw);
+			return `${bom}${restoreLineEndings(afterText, detectLineEnding(text))}`;
+		} catch {
+			return afterText;
+		}
+	}
+
+	async function applyReviewedAfterText(preview: ChangePreview, afterText: string): Promise<any> {
+		const finalContent = await restoreReviewedFinalContent(preview.absolutePath, afterText);
+		await mkdir(dirname(preview.absolutePath), { recursive: true });
+		await writeFile(preview.absolutePath, finalContent, "utf-8");
+
+		if (preview.toolName === "edit") {
+			const diffResult = generateDiffString(preview.beforeText ?? "", afterText);
+			return {
+				content: [{ type: "text", text: `Successfully applied reviewed final contents to ${preview.path}.` }],
+				details: { diff: diffResult.diff, firstChangedLine: diffResult.firstChangedLine },
+			};
+		}
+
+		return {
+			content: [
+				{
+					type: "text",
+					text:
+						preview.toolName === "write"
+							? `Successfully wrote ${Buffer.byteLength(finalContent, "utf-8")} bytes to ${preview.path}`
+							: `Successfully applied reviewed final contents to ${preview.path}.`,
+				},
+			],
+			details: undefined,
+		};
+	}
+
 	pi.registerCommand("diff-approval", {
 		description: "Toggle or inspect diff approval mode",
 		handler: handleCommand,
@@ -216,41 +220,30 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		refreshConfig();
-		clearPendingEditedChanges();
+		clearPendingState();
 		updateStatus(ctx);
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
 		refreshConfig();
-		clearPendingEditedChanges();
+		clearPendingState();
 		updateStatus(ctx);
 	});
 
 	pi.on("session_fork", async (_event, ctx) => {
 		refreshConfig();
-		clearPendingEditedChanges();
+		clearPendingState();
 		updateStatus(ctx);
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
 		if (!ctx.hasUI) return;
 		if (!TOOL_CALL_REVIEWED_TOOLS.has(event.toolName as PreviewToolName)) return;
+		if (config.autoApprove) return;
 
 		const preview = await computeChangePreview(event.toolName as PreviewToolName, event.input, ctx.cwd);
 		if (!preview) return;
-
-		if (consumePendingEditedChange(preview)) {
-			return;
-		}
-
-		if (shouldSkipReview(preview)) {
-			return;
-		}
-
-		const hasPendingEditedChange = hasPendingEditedChangeForPath(preview.absolutePath);
-		if (config.autoApprove && !hasPendingEditedChange) {
-			return;
-		}
+		if (shouldSkipReview(preview)) return;
 
 		const decision = await reviewChangePreview(ctx, preview, {
 			allowAfterEdit: true,
@@ -261,7 +254,6 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		}
 
 		if (decision.action === "reject" || decision.action === "steer") {
-			clearPendingEditedChangeForPath(preview.absolutePath);
 			const feedback = decision.action === "steer" ? decision.feedback?.trim() : undefined;
 			if (decision.action === "steer") {
 				sendSteerFeedback(preview, feedback);
@@ -274,7 +266,6 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 
 		if (decision.afterTextOverride !== undefined) {
 			if (preview.beforeText !== undefined && decision.afterTextOverride === preview.beforeText) {
-				clearPendingEditedChangeForPath(preview.absolutePath);
 				sendNoChangeFeedback(preview);
 				return {
 					block: true,
@@ -282,14 +273,46 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			queuePendingEditedChange(preview, decision.afterTextOverride);
-			sendEditedContentFeedback(preview, decision.afterTextOverride);
-			return {
-				block: true,
-				reason: `User edited the approved final contents for ${preview.path}; waiting for a revised tool call.`,
-			};
+			queuePendingImmediateApply(event.toolCallId, preview, decision.afterTextOverride);
+		}
+	});
+
+	pi.on("tool_result", async (event, ctx) => {
+		if (event.toolName !== "edit" && event.toolName !== "write" && event.toolName !== "hashline_edit") return;
+
+		const pending = consumePendingImmediateApply(event.toolCallId);
+		if (!pending) return;
+
+		if (event.isError) {
+			if (ctx.hasUI) {
+				ctx.ui.notify(
+					`Reviewed inline edits for ${pending.preview.path} were not applied because the original ${pending.preview.toolName} call failed.`,
+					"warning",
+				);
+			}
+			return;
 		}
 
-		clearPendingEditedChangeForPath(preview.absolutePath);
+		try {
+			return await applyReviewedAfterText(pending.preview, pending.afterText);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (ctx.hasUI) {
+				ctx.ui.notify(
+					`Reviewed inline edits for ${pending.preview.path} could not be applied automatically: ${message}`,
+					"warning",
+				);
+			}
+			return {
+				content: [
+					...event.content,
+					{
+						type: "text",
+						text: `Warning: reviewed inline edits for ${pending.preview.path} could not be applied automatically: ${message}`,
+					},
+				],
+				details: event.details,
+			};
+		}
 	});
 }
