@@ -38,6 +38,11 @@ interface ReviewOptions {
 type ViewMode = "split" | "unified";
 type DiffTone = "toolDiffAdded" | "toolDiffRemoved" | "toolDiffContext";
 
+interface CursorOverlay {
+    startOffset: number;
+    lines: string[];
+}
+
 interface RenderedCell {
     lines: string[];
     cursorLineIndex?: number;
@@ -47,6 +52,19 @@ interface RenderedContent {
     lines: string[];
     hunkOffsets: number[];
     cursorOffset?: number;
+    cursorOverlay?: CursorOverlay;
+}
+
+interface RenderedRowSpan {
+    startOffset: number;
+    lineCount: number;
+}
+
+interface RenderedDiffCache {
+    lines: string[];
+    hunkOffsets: number[];
+    rowSpans: Array<RenderedRowSpan | undefined>;
+    rowIndexByNewLine: number[];
 }
 
 interface ViewerLayout {
@@ -61,6 +79,7 @@ interface ViewerLayout {
     maxScrollOffset: number;
     scrollOffset: number;
     currentHunkIndex: number;
+    cursorOverlay?: CursorOverlay;
 }
 
 const TAB_REPLACEMENT = "    ";
@@ -230,6 +249,11 @@ class DiffViewer implements Component {
     private inlineEditor?: Editor;
     private savedContextLinesBeforeInlineEdit?: number;
     private selectedHunkIndex?: number;
+    private readonly diffModelCacheIds = new WeakMap<StructuredDiff, number>();
+    private nextDiffModelCacheId = 1;
+    private lastRenderedDiffCache?: { key: string; value: RenderedDiffCache };
+    private readonly cursorlessRowCache = new Map<string, RenderedCell>();
+    private readonly gapLineCache = new Map<string, string>();
 
     constructor(
         private readonly tui: { terminal: { rows: number } },
@@ -248,7 +272,7 @@ class DiffViewer implements Component {
     }
 
     invalidate(): void {
-        // Stateless render.
+        this.lastRenderedDiffCache = undefined;
     }
 
     isEditingInline(): boolean {
@@ -293,6 +317,7 @@ class DiffViewer implements Component {
         this.baseDiffModel = nextPreview.diffModel;
         this.fullContextLines = Math.max(nextPreview.diffModel?.totalOldLines ?? 0, nextPreview.diffModel?.totalNewLines ?? 0, 1);
         this.diffModel = nextPreview.diffModel;
+        this.lastRenderedDiffCache = undefined;
         if (this.inlineEditMode && this.baseDiffModel) {
             this.diffModel = adjustStructuredDiffContext(this.baseDiffModel, this.fullContextLines);
             return;
@@ -300,6 +325,68 @@ class DiffViewer implements Component {
         if (this.baseDiffModel) {
             this.diffModel = adjustStructuredDiffContext(this.baseDiffModel, this.contextLines);
         }
+    }
+
+    private getDiffModelCacheId(diff: StructuredDiff): number {
+        const existing = this.diffModelCacheIds.get(diff);
+        if (existing !== undefined) return existing;
+
+        const nextId = this.nextDiffModelCacheId++;
+        this.diffModelCacheIds.set(diff, nextId);
+        return nextId;
+    }
+
+    private serializeInlineRanges(ranges: InlineRange[]): string {
+        return ranges.map((range) => `${range.start}:${range.end}`).join(",");
+    }
+
+    private getCursorlessRowCacheKey(
+        mode: ViewMode,
+        row: StructuredDiffRow,
+        width: number,
+        lineNumberWidth: number,
+        split?: { leftWidth: number; rightWidth: number },
+    ): string {
+        return [
+            mode,
+            width,
+            lineNumberWidth,
+            this.wrapLongLines ? "wrap" : "nowrap",
+            split?.leftWidth ?? "",
+            split?.rightWidth ?? "",
+            row.kind,
+            row.oldLineNumber ?? "",
+            row.newLineNumber ?? "",
+            this.serializeInlineRanges(row.oldHighlights),
+            this.serializeInlineRanges(row.newHighlights),
+            row.oldText,
+            row.newText,
+        ].join("\u001f");
+    }
+
+    private getCachedCursorlessRow(key: string, render: () => RenderedCell): RenderedCell {
+        const cached = this.cursorlessRowCache.get(key);
+        if (cached) return cached;
+
+        const rendered = render();
+        if (this.cursorlessRowCache.size >= 10_000) {
+            this.cursorlessRowCache.clear();
+        }
+        this.cursorlessRowCache.set(key, rendered);
+        return rendered;
+    }
+
+    private getCachedGapLine(label: string, width: number): string {
+        const key = `${width}\u001f${label}`;
+        const cached = this.gapLineCache.get(key);
+        if (cached) return cached;
+
+        const rendered = centerAnsiText(this.theme.fg("muted", label), width);
+        if (this.gapLineCache.size >= 1_000) {
+            this.gapLineCache.clear();
+        }
+        this.gapLineCache.set(key, rendered);
+        return rendered;
     }
 
     enterInlineEditMode(): boolean {
@@ -611,7 +698,7 @@ class DiffViewer implements Component {
         const clampedCursorCol = cursorCol === undefined ? undefined : clampNumber(cursorCol, 0, chars.length);
         if (safeText.length === 0) {
             if (clampedCursorCol === undefined) return "";
-            return `${this.inlineEditMode ? CURSOR_MARKER : ""}${INLINE_CURSOR_OPEN} ${INLINE_CURSOR_CLOSE}`;
+            return this.inlineEditMode ? CURSOR_MARKER : `${INLINE_CURSOR_OPEN} ${INLINE_CURSOR_CLOSE}`;
         }
 
         const safeRanges = ranges
@@ -685,7 +772,7 @@ class DiffViewer implements Component {
         }
 
         if (clampedCursorCol !== undefined && clampedCursorCol === chars.length) {
-            output += `${this.inlineEditMode ? CURSOR_MARKER : ""}${INLINE_CURSOR_OPEN} ${INLINE_CURSOR_CLOSE}`;
+            output += this.inlineEditMode ? CURSOR_MARKER : `${INLINE_CURSOR_OPEN} ${INLINE_CURSOR_CLOSE}`;
         }
 
         return output;
@@ -714,6 +801,7 @@ class DiffViewer implements Component {
         side: "old" | "new",
         cellWidth: number,
         lineNumberWidth: number,
+        cursorCol?: number,
     ): RenderedCell {
         const prefixWidth = lineNumberWidth + 2;
         const contentWidth = Math.max(1, cellWidth - prefixWidth);
@@ -742,7 +830,6 @@ class DiffViewer implements Component {
             }
         }
 
-        const cursorCol = this.getCursorColForRow(row, side);
         if (lineNumber === undefined && text.length === 0 && cursorCol === undefined) {
             return { lines: [" ".repeat(cellWidth)] };
         }
@@ -762,15 +849,16 @@ class DiffViewer implements Component {
         return { lines: result.length > 0 ? result : [" ".repeat(cellWidth)], cursorLineIndex };
     }
 
-    private renderSplitRow(
+    private renderSplitRowWithCursor(
         row: StructuredDiffRow,
         leftWidth: number,
         rightWidth: number,
         gutterText: string,
         lineNumberWidth: number,
+        cursorCol?: number,
     ): RenderedCell {
         const leftCell = this.renderSplitCell(row, "old", leftWidth, lineNumberWidth);
-        const rightCell = this.renderSplitCell(row, "new", rightWidth, lineNumberWidth);
+        const rightCell = this.renderSplitCell(row, "new", rightWidth, lineNumberWidth, cursorCol);
         const total = Math.max(leftCell.lines.length, rightCell.lines.length);
         const lines: string[] = [];
 
@@ -781,6 +869,16 @@ class DiffViewer implements Component {
         }
 
         return { lines, cursorLineIndex: rightCell.cursorLineIndex };
+    }
+
+    private renderSplitRow(
+        row: StructuredDiffRow,
+        leftWidth: number,
+        rightWidth: number,
+        gutterText: string,
+        lineNumberWidth: number,
+    ): RenderedCell {
+        return this.renderSplitRowWithCursor(row, leftWidth, rightWidth, gutterText, lineNumberWidth, this.getCursorColForRow(row, "new"));
     }
 
     private renderUnifiedLine(
@@ -811,65 +909,60 @@ class DiffViewer implements Component {
         return { lines: lines.length > 0 ? lines : [" ".repeat(width)], cursorLineIndex };
     }
 
-    private renderUnifiedRow(row: StructuredDiffRow, width: number, lineNumberWidth: number): RenderedCell {
+    private renderUnifiedRowWithCursor(
+        row: StructuredDiffRow,
+        width: number,
+        lineNumberWidth: number,
+        cursorCol?: number,
+    ): RenderedCell {
         if (row.kind === "equal") {
-            return this.renderUnifiedLine(
-                " ",
-                row.oldLineNumber,
-                row.oldText,
-                "toolDiffContext",
-                [],
-                width,
-                lineNumberWidth,
-                this.getCursorColForRow(row, "new"),
-            );
+            return this.renderUnifiedLine(" ", row.oldLineNumber, row.oldText, "toolDiffContext", [], width, lineNumberWidth, cursorCol);
         }
         if (row.kind === "delete") {
             return this.renderUnifiedLine("-", row.oldLineNumber, row.oldText, "toolDiffRemoved", row.oldHighlights, width, lineNumberWidth);
         }
         if (row.kind === "insert") {
-            return this.renderUnifiedLine(
-                "+",
-                row.newLineNumber,
-                row.newText,
-                "toolDiffAdded",
-                row.newHighlights,
-                width,
-                lineNumberWidth,
-                this.getCursorColForRow(row, "new"),
-            );
+            return this.renderUnifiedLine("+", row.newLineNumber, row.newText, "toolDiffAdded", row.newHighlights, width, lineNumberWidth, cursorCol);
         }
 
         const removed = this.renderUnifiedLine("-", row.oldLineNumber, row.oldText, "toolDiffRemoved", row.oldHighlights, width, lineNumberWidth);
-        const added = this.renderUnifiedLine(
-            "+",
-            row.newLineNumber,
-            row.newText,
-            "toolDiffAdded",
-            row.newHighlights,
-            width,
-            lineNumberWidth,
-            this.getCursorColForRow(row, "new"),
-        );
+        const added = this.renderUnifiedLine("+", row.newLineNumber, row.newText, "toolDiffAdded", row.newHighlights, width, lineNumberWidth, cursorCol);
         return {
             lines: [...removed.lines, ...added.lines],
             cursorLineIndex: added.cursorLineIndex === undefined ? undefined : removed.lines.length + added.cursorLineIndex,
         };
     }
 
-    private renderGapLine(label: string, width: number): string {
-        return centerAnsiText(this.theme.fg("muted", label), width);
+    private renderUnifiedRow(row: StructuredDiffRow, width: number, lineNumberWidth: number): RenderedCell {
+        return this.renderUnifiedRowWithCursor(row, width, lineNumberWidth, this.getCursorColForRow(row, "new"));
     }
 
-    private buildStructuredContent(width: number, mode: ViewMode): RenderedContent {
-        if (!this.diffModel) return { lines: [], hunkOffsets: [] };
+    private renderGapLine(label: string, width: number): string {
+        return this.getCachedGapLine(label, width);
+    }
+
+    private getRenderedDiffCache(width: number, mode: ViewMode): RenderedDiffCache | undefined {
+        if (!this.diffModel) return undefined;
+
+        const lineNumberWidth = this.getLineNumberWidth();
+        const cacheKey = [
+            this.getDiffModelCacheId(this.diffModel),
+            mode,
+            width,
+            lineNumberWidth,
+            this.wrapLongLines ? "wrap" : "nowrap",
+        ].join("|");
+        if (this.lastRenderedDiffCache?.key === cacheKey) {
+            return this.lastRenderedDiffCache.value;
+        }
+
         const navigationDiff = this.getNavigationDiff() ?? this.diffModel;
         const navigationHunks = navigationDiff.hunks;
-        const lineNumberWidth = this.getLineNumberWidth();
         const lines: string[] = [];
         const hunkOffsets: number[] = new Array(navigationHunks.length).fill(0);
+        const rowSpans: Array<RenderedRowSpan | undefined> = new Array(this.diffModel.rows.length);
+        const rowIndexByNewLine: number[] = new Array(this.diffModel.totalNewLines + 1);
         let nextHunkIndex = 0;
-        let cursorOffset: number | undefined;
 
         const split = mode === "split" ? this.getSplitLayout(width) : undefined;
 
@@ -883,12 +976,21 @@ class DiffViewer implements Component {
                     nextHunkIndex++;
                 }
 
+                const rowStartOffset = lines.length;
                 const rendered =
                     mode === "split" && split
-                        ? this.renderSplitRow(item.row, split.leftWidth, split.rightWidth, split.gutterText, lineNumberWidth)
-                        : this.renderUnifiedRow(item.row, width, lineNumberWidth);
-                if (cursorOffset === undefined && rendered.cursorLineIndex !== undefined) {
-                    cursorOffset = lines.length + rendered.cursorLineIndex;
+                        ? this.getCachedCursorlessRow(
+                            this.getCursorlessRowCacheKey(mode, item.row, width, lineNumberWidth, split),
+                            () => this.renderSplitRowWithCursor(item.row, split.leftWidth, split.rightWidth, split.gutterText, lineNumberWidth),
+                        )
+                        : this.getCachedCursorlessRow(
+                            this.getCursorlessRowCacheKey(mode, item.row, width, lineNumberWidth),
+                            () => this.renderUnifiedRowWithCursor(item.row, width, lineNumberWidth),
+                        );
+
+                rowSpans[item.fullRowIndex] = { startOffset: rowStartOffset, lineCount: rendered.lines.length };
+                if (item.row.newLineNumber !== undefined) {
+                    rowIndexByNewLine[item.row.newLineNumber] = item.fullRowIndex;
                 }
                 lines.push(...rendered.lines);
                 continue;
@@ -901,7 +1003,60 @@ class DiffViewer implements Component {
             hunkOffsets[i] = lines.length;
         }
 
-        return { lines, hunkOffsets, cursorOffset };
+        const value = { lines, hunkOffsets, rowSpans, rowIndexByNewLine };
+        this.lastRenderedDiffCache = { key: cacheKey, value };
+        return value;
+    }
+
+    private getCursorOverlay(
+        width: number,
+        mode: ViewMode,
+        content: RenderedDiffCache,
+    ): { cursorOffset?: number; cursorOverlay?: CursorOverlay } {
+        if (!this.inlineEditMode || !this.diffModel) return {};
+
+        const cursor = this.getInlineCursor();
+        if (!cursor) return {};
+
+        const rowIndex = content.rowIndexByNewLine[cursor.line + 1];
+        if (rowIndex === undefined) return {};
+
+        const row = this.diffModel.rows[rowIndex];
+        const rowSpan = content.rowSpans[rowIndex];
+        if (!row || !rowSpan) return {};
+
+        const lineNumberWidth = this.getLineNumberWidth();
+        const split = mode === "split" ? this.getSplitLayout(width) : undefined;
+        const rendered =
+            mode === "split" && split
+                ? this.renderSplitRowWithCursor(row, split.leftWidth, split.rightWidth, split.gutterText, lineNumberWidth, cursor.col)
+                : this.renderUnifiedRowWithCursor(row, width, lineNumberWidth, cursor.col);
+
+        if (rendered.lines.length !== rowSpan.lineCount) {
+            this.lastRenderedDiffCache = undefined;
+            return {};
+        }
+
+        return {
+            cursorOffset: rowSpan.startOffset + (rendered.cursorLineIndex ?? 0),
+            cursorOverlay: {
+                startOffset: rowSpan.startOffset,
+                lines: rendered.lines,
+            },
+        };
+    }
+
+    private buildStructuredContent(width: number, mode: ViewMode): RenderedContent {
+        const content = this.getRenderedDiffCache(width, mode);
+        if (!content) return { lines: [], hunkOffsets: [] };
+
+        const { cursorOffset, cursorOverlay } = this.getCursorOverlay(width, mode, content);
+        return {
+            lines: content.lines,
+            hunkOffsets: content.hunkOffsets,
+            cursorOffset,
+            cursorOverlay,
+        };
     }
 
     private stylePlainTextLine(line: string): string {
@@ -968,6 +1123,7 @@ class DiffViewer implements Component {
             maxScrollOffset,
             scrollOffset: clampedOffset,
             currentHunkIndex,
+            cursorOverlay: content.cursorOverlay,
         };
     }
 
@@ -1100,6 +1256,16 @@ class DiffViewer implements Component {
         this.scrollOffset = layout.scrollOffset;
 
         const visible = layout.contentLines.slice(layout.scrollOffset, layout.scrollOffset + layout.viewportHeight);
+        if (layout.cursorOverlay) {
+            for (let i = 0; i < layout.cursorOverlay.lines.length; i++) {
+                const absoluteLineIndex = layout.cursorOverlay.startOffset + i;
+                if (absoluteLineIndex < layout.scrollOffset || absoluteLineIndex >= layout.scrollOffset + layout.viewportHeight) {
+                    continue;
+                }
+                visible[absoluteLineIndex - layout.scrollOffset] = layout.cursorOverlay.lines[i]!;
+            }
+        }
+
         const linesAbove = layout.scrollOffset;
         const linesBelow = Math.max(0, layout.contentLines.length - (layout.scrollOffset + visible.length));
         const hunkInfo = layout.hunkOffsets.length > 0 ? `hunk ${layout.currentHunkIndex + 1}/${layout.hunkOffsets.length}` : "no hunks";

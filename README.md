@@ -1,10 +1,8 @@
 # pi-show-diffs
 
-A **pi** package that shows a diff before file changes are applied.
+warp.dev inspired **pi** extension that stops and shows an editable diff before file changes are applied.
 
-https://github.com/user-attachments/assets/67d60ce6-dd81-4f5b-a0ed-16f2829bfd22
-
-`pi-show-diffs` intercepts file-changing tools and opens a review modal before the change runs.
+https://github.com/user-attachments/assets/8bda7619-fcd2-4615-a93a-d15b2fee408b
 
 It currently reviews:
 
@@ -54,31 +52,31 @@ Command args:
 - `/diff-approval toggle`
 - `/diff-approval status`
 
-## Keys in the diff modal
+## Shortcuts in the diff modal
 
 ### Approval actions
 
-- `Enter`, `a`, or `y` — approve
-- `r` or `Esc` — reject
-- `E` or `e` — enter inline edit mode for the updated side
+- `Enter`, `a`, or `y` - approve
+- `r` or `Esc` - reject
+- `E` or `e` - enter inline edit mode for the updated side
 - `Esc` in inline edit mode — leave editing and return to review mode
-- `s` — steer and add feedback
-- `Shift+A` — approve and turn on auto-approve
+- `s` - steer and add feedback
+- `Shift+A` - approve and turn on auto-approve
 
 ### Navigation
 
-- `↑` / `↓` — scroll
-- `PgUp` / `PgDn` — jump by page
+- `↑` / `↓` - scroll
+- `PgUp` / `PgDn` - jump by page
 - `Home` / `End` — jump to top/bottom
-- `n` / `p` — next / previous hunk
+- `n` / `p` - next / previous hunk
 - inline edit mode: `Ctrl+N` / `Ctrl+P` jump hunks; `Alt`/`Option` + `↑` / `↓` also works if your terminal is configured to send Alt
 
 ### View controls
 
-- `Tab` — toggle split / unified view
+- `Tab` - toggle split / unified view
 - `←` / `→` — decrease / increase shown context around hunks
-- `[` / `]` — alternate context controls
-- `w` — toggle wrapping
+- `[` / `]` - alternate context controls
+- `w` - toggle wrapping
 
 ## Config
 
