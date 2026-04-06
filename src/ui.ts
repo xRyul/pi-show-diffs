@@ -195,42 +195,6 @@ class BorderFrame implements Component {
     }
 }
 
-class CenteredFrame implements Component {
-    constructor(
-        private readonly child: Component,
-        private readonly tui: { terminal: { rows: number } },
-    ) {}
-
-    invalidate(): void {
-        this.child.invalidate();
-    }
-
-    render(width: number): string[] {
-        const safeWidth = Math.max(1, width);
-        const maxFrameWidth = Math.max(1, safeWidth - 2);
-        const preferredFrameWidth = Math.max(20, Math.floor(safeWidth * 0.96));
-        const frameWidth = Math.min(maxFrameWidth, preferredFrameWidth);
-        const childLines = this.child.render(frameWidth);
-        const canvasHeight = Math.max(childLines.length, this.tui.terminal.rows || 24);
-        const topPadding = Math.max(0, Math.floor((canvasHeight - childLines.length) / 2));
-        const bottomPadding = Math.max(0, canvasHeight - topPadding - childLines.length);
-        const leftPadding = Math.max(0, Math.floor((safeWidth - frameWidth) / 2));
-        const blankLine = " ".repeat(safeWidth);
-        const lines: string[] = [];
-
-        for (let i = 0; i < topPadding; i++) lines.push(blankLine);
-
-        for (const line of childLines) {
-            const safeLine = truncateToWidth(line, frameWidth, "", true);
-            const rightPadding = Math.max(0, safeWidth - leftPadding - visibleWidth(safeLine));
-            lines.push(`${" ".repeat(leftPadding)}${safeLine}${" ".repeat(rightPadding)}`);
-        }
-
-        for (let i = 0; i < bottomPadding; i++) lines.push(blankLine);
-
-        return lines;
-    }
-}
 
 class DiffViewer implements Component {
     private scrollOffset = 0;
@@ -1354,51 +1318,61 @@ export async function reviewChangePreview(
         }
     }
 
-    const decision = await ctx.ui.custom<DiffDecision>((tui, theme, _kb, done) => {
-        const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit);
-        const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
-        const centered = new CenteredFrame(framed, tui);
-        const previousShowHardwareCursor = tui.getShowHardwareCursor();
-        const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
-        syncCursorMode();
+    const decision = await ctx.ui.custom<DiffDecision>(
+        (tui, theme, _kb, done) => {
+            const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit);
+            const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
+            const previousShowHardwareCursor = tui.getShowHardwareCursor();
+            const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
+            syncCursorMode();
 
-        return {
-            render: (width: number) => centered.render(width),
-            invalidate: () => centered.invalidate(),
-            handleInput: (data: string) => {
-                if (viewer.isEditingInline()) {
+            return {
+                render: (width: number) => framed.render(width),
+                invalidate: () => framed.invalidate(),
+                handleInput: (data: string) => {
+                    if (viewer.isEditingInline()) {
+                        if (viewer.handleInput(data)) {
+                            syncCursorMode();
+                            tui.requestRender();
+                        }
+                        return;
+                    }
+
+                    if (matchesKey(data, "return") || data === "a" || data === "y") {
+                        done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
+                        return;
+                    }
+                    if (matchesKey(data, "escape") || data === "r") {
+                        done({ action: "reject" });
+                        return;
+                    }
+                    if (data === "s") {
+                        done({ action: "steer" });
+                        return;
+                    }
+                    if (data === "A") {
+                        done({ action: "approve_and_enable_auto", afterTextOverride: viewer.getAfterTextOverride() });
+                        return;
+                    }
+
                     if (viewer.handleInput(data)) {
                         syncCursorMode();
                         tui.requestRender();
                     }
-                    return;
-                }
-
-                if (matchesKey(data, "return") || data === "a" || data === "y") {
-                    done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
-                    return;
-                }
-                if (matchesKey(data, "escape") || data === "r") {
-                    done({ action: "reject" });
-                    return;
-                }
-                if (data === "s") {
-                    done({ action: "steer" });
-                    return;
-                }
-                if (data === "A") {
-                    done({ action: "approve_and_enable_auto", afterTextOverride: viewer.getAfterTextOverride() });
-                    return;
-                }
-
-                if (viewer.handleInput(data)) {
-                    syncCursorMode();
-                    tui.requestRender();
-                }
+                },
+                dispose: () => tui.setShowHardwareCursor(previousShowHardwareCursor),
+            };
+        },
+        {
+            overlay: true,
+            overlayOptions: {
+                anchor: "center",
+                width: "96%",
+                minWidth: 20,
+                margin: 1,
             },
-            dispose: () => tui.setShowHardwareCursor(previousShowHardwareCursor),
-        };
-    });
+        },
+    );
 
     if (decision.action !== "steer") return decision;
     const feedback = await ctx.ui.editor(`How should ${preview.path} change instead?`, "");
