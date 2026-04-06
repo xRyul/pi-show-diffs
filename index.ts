@@ -224,17 +224,6 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		updateStatus(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		refreshConfig();
-		clearPendingState();
-		updateStatus(ctx);
-	});
-
-	pi.on("session_fork", async (_event, ctx) => {
-		refreshConfig();
-		clearPendingState();
-		updateStatus(ctx);
-	});
 
 	pi.on("tool_call", async (event, ctx) => {
 		if (!ctx.hasUI) return;
