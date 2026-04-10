@@ -4,10 +4,12 @@ import { getAgentDir } from "@mariozechner/pi-coding-agent";
 
 export interface DiffApprovalConfig {
 	autoApprove: boolean;
+	expandableLayout: boolean;
 }
 
 export const DEFAULT_CONFIG: DiffApprovalConfig = {
 	autoApprove: false,
+	expandableLayout: false,
 };
 
 export const CONFIG_PATH = join(getAgentDir(), "extensions", "pi-show-diffs.json");
@@ -18,6 +20,7 @@ export function loadConfig(): DiffApprovalConfig {
 		const parsed = JSON.parse(raw) as Partial<DiffApprovalConfig>;
 		return {
 			autoApprove: parsed.autoApprove === true,
+			expandableLayout: parsed.expandableLayout === true,
 		};
 	} catch {
 		return { ...DEFAULT_CONFIG };

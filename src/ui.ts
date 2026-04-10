@@ -33,6 +33,7 @@ export interface DiffDecision {
 
 interface ReviewOptions {
     allowAfterEdit?: boolean;
+    expandableLayout?: boolean;
 }
 
 type ViewMode = "split" | "unified";
@@ -242,6 +243,7 @@ class DiffViewer implements Component {
     private scrollOffset = 0;
     private lastWidth = 80;
     private wrapLongLines = true;
+    private expandedView = false;
     private preferredMode: ViewMode;
     private baseDiffModel?: StructuredDiff;
     private diffModel?: StructuredDiff;
@@ -505,7 +507,25 @@ class DiffViewer implements Component {
 
     private getTotalHeight(): number {
         const rows = this.tui.terminal.rows || 24;
-        return Math.max(16, Math.min(rows - 2, Math.floor(rows * 0.9)));
+        if (this.expandedView) {
+            return Math.max(16, rows - 2);
+        }
+        return Math.max(10, Math.floor(rows * 0.3));
+    }
+
+    toggleExpand(): boolean {
+        this.expandedView = !this.expandedView;
+        this.lastRenderedDiffCache = undefined;
+        return true;
+    }
+
+    isExpanded(): boolean {
+        return this.expandedView;
+    }
+
+    setExpanded(value: boolean): void {
+        this.expandedView = value;
+        this.lastRenderedDiffCache = undefined;
     }
 
     private getLineNumberWidth(): number {
@@ -1322,6 +1342,7 @@ export async function reviewChangePreview(
 ): Promise<DiffDecision> {
     const allowAfterEdit =
         Boolean(options.allowAfterEdit) && preview.beforeText !== undefined && preview.afterText !== undefined;
+    const expandableLayout = Boolean(options.expandableLayout);
     const initialAfterText = preview.afterText;
     let currentPreview = preview;
 
@@ -1379,6 +1400,69 @@ export async function reviewChangePreview(
         }
     }
 
+    if (!expandableLayout) {
+        const decision = await ctx.ui.custom<DiffDecision>(
+            (tui, theme, _kb, done) => {
+                const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit);
+                const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
+                const previousShowHardwareCursor = tui.getShowHardwareCursor();
+                const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
+                syncCursorMode();
+
+                return {
+                    render: (width: number) => framed.render(width),
+                    invalidate: () => framed.invalidate(),
+                    handleInput: (data: string) => {
+                        if (viewer.isEditingInline()) {
+                            if (viewer.handleInput(data)) {
+                                syncCursorMode();
+                                tui.requestRender();
+                            }
+                            return;
+                        }
+
+                        if (matchesKey(data, "return") || data === "a" || data === "y") {
+                            done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
+                            return;
+                        }
+                        if (matchesKey(data, "escape") || data === "r") {
+                            done({ action: "reject" });
+                            return;
+                        }
+                        if (data === "s") {
+                            done({ action: "steer" });
+                            return;
+                        }
+                        if (data === "A") {
+                            done({ action: "approve_and_enable_auto", afterTextOverride: viewer.getAfterTextOverride() });
+                            return;
+                        }
+
+                        if (viewer.handleInput(data)) {
+                            syncCursorMode();
+                            tui.requestRender();
+                        }
+                    },
+                    dispose: () => tui.setShowHardwareCursor(previousShowHardwareCursor),
+                };
+            },
+            {
+                overlay: true,
+                overlayOptions: {
+                    anchor: "center",
+                    width: "96%",
+                    minWidth: 20,
+                    margin: 1,
+                },
+            },
+        );
+
+        if (decision.action !== "steer") return decision;
+        const feedback = await ctx.ui.editor(`How should ${preview.path} change instead?`, "");
+        return feedback?.trim() ? { action: "steer", feedback: feedback.trim() } : { action: "reject" };
+    }
+
+    // Expandable layout: non-overlay compact, Ctrl+F stacks full overlay on top
     const decision = await ctx.ui.custom<DiffDecision>(
         (tui, theme, _kb, done) => {
             const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit);
@@ -1386,6 +1470,72 @@ export async function reviewChangePreview(
             const previousShowHardwareCursor = tui.getShowHardwareCursor();
             const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
             syncCursorMode();
+
+            const launchOverlay = () => {
+                ctx.ui.custom<DiffDecision | { action: "collapse" }>(
+                    (oTui, oTheme, _oKb, oDone) => {
+                        const oViewer = new DiffViewer(oTui, oTheme, preview, allowAfterEdit);
+                        oViewer.setExpanded(true);
+                        const oFramed = new BorderFrame(oViewer, (text) => oTheme.fg("accent", text));
+                        const oPrevCursor = oTui.getShowHardwareCursor();
+                        const oSyncCursor = () => oTui.setShowHardwareCursor(oViewer.isEditingInline() || oPrevCursor);
+                        oSyncCursor();
+
+                        return {
+                            render: (width: number) => oFramed.render(width),
+                            invalidate: () => oFramed.invalidate(),
+                            handleInput: (data: string) => {
+                                if (oViewer.isEditingInline()) {
+                                    if (oViewer.handleInput(data)) {
+                                        oSyncCursor();
+                                        oTui.requestRender();
+                                    }
+                                    return;
+                                }
+
+                                if (matchesKey(data, "ctrl+f")) {
+                                    oDone({ action: "collapse" } as any);
+                                    return;
+                                }
+                                if (matchesKey(data, "return") || data === "a" || data === "y") {
+                                    oDone({ action: "approve", afterTextOverride: oViewer.getAfterTextOverride() });
+                                    return;
+                                }
+                                if (matchesKey(data, "escape") || data === "r") {
+                                    oDone({ action: "reject" });
+                                    return;
+                                }
+                                if (data === "s") {
+                                    oDone({ action: "steer" });
+                                    return;
+                                }
+                                if (data === "A") {
+                                    oDone({ action: "approve_and_enable_auto", afterTextOverride: oViewer.getAfterTextOverride() });
+                                    return;
+                                }
+
+                                if (oViewer.handleInput(data)) {
+                                    oSyncCursor();
+                                    oTui.requestRender();
+                                }
+                            },
+                            dispose: () => oTui.setShowHardwareCursor(oPrevCursor),
+                        };
+                    },
+                    {
+                        overlay: true,
+                        overlayOptions: {
+                            anchor: "center",
+                            width: "100%",
+                            minWidth: 20,
+                            margin: 0,
+                        },
+                    },
+                ).then((overlayDecision) => {
+                    if ((overlayDecision as any).action === "collapse") return;
+                    done(overlayDecision as DiffDecision);
+                });
+            };
 
             return {
                 render: (width: number) => framed.render(width),
@@ -1399,6 +1549,10 @@ export async function reviewChangePreview(
                         return;
                     }
 
+                    if (matchesKey(data, "ctrl+f")) {
+                        launchOverlay();
+                        return;
+                    }
                     if (matchesKey(data, "return") || data === "a" || data === "y") {
                         done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
                         return;
@@ -1425,13 +1579,7 @@ export async function reviewChangePreview(
             };
         },
         {
-            overlay: true,
-            overlayOptions: {
-                anchor: "center",
-                width: "96%",
-                minWidth: 20,
-                margin: 1,
-            },
+            overlay: false,
         },
     );
 
