@@ -88,10 +88,52 @@ const MIN_CONTEXT_LINES = 0;
 const MAX_CONTEXT_LINES = 80;
 const INLINE_CURSOR_OPEN = "\x1b[1;7m";
 const INLINE_CURSOR_CLOSE = "\x1b[0m";
-const MUTED_DIFF_BACKGROUND_ANSI: Record<Exclude<DiffTone, "toolDiffContext">, string> = {
+function getThemeInstance(): any {
+    try {
+        return (globalThis as any)[Symbol.for("@mariozechner/pi-coding-agent:theme")] ?? undefined;
+    } catch {}
+    return undefined;
+}
+
+function getThemeBgAnsi(color: string): string | undefined {
+    return getThemeInstance()?.getBgAnsi?.(color);
+}
+
+function isLightTheme(): boolean {
+    const t = getThemeInstance();
+    if (!t) return false;
+    // Check theme name for explicit light/dark hint
+    const name: string = (t.name ?? "").toLowerCase();
+    if (name.includes("light")) return true;
+    if (name.includes("dark")) return false;
+    // Parse RGB from toolPendingBg ANSI to measure luminance
+    const bg = t.getBgAnsi?.("toolPendingBg");
+    if (typeof bg === "string") {
+        const m = bg.match(/48;2;(\d+);(\d+);(\d+)/);
+        if (m) {
+            const lum = (Number(m[1]) * 299 + Number(m[2]) * 587 + Number(m[3]) * 114) / 1000;
+            return lum > 128;
+        }
+    }
+    return false;
+}
+
+const DARK_DIFF_BG: Record<Exclude<DiffTone, "toolDiffContext">, string> = {
     toolDiffAdded: "\x1b[48;2;58;86;74m",
     toolDiffRemoved: "\x1b[48;2;86;63;67m",
 };
+const LIGHT_DIFF_BG: Record<Exclude<DiffTone, "toolDiffContext">, string> = {
+    toolDiffAdded: "\x1b[48;2;210;228;190m",
+    toolDiffRemoved: "\x1b[48;2;228;200;200m",
+};
+
+function getDiffBackgrounds(): Record<Exclude<DiffTone, "toolDiffContext">, string> {
+    const fallback = isLightTheme() ? LIGHT_DIFF_BG : DARK_DIFF_BG;
+    return {
+        toolDiffAdded: getThemeBgAnsi("toolSuccessBg") ?? fallback.toolDiffAdded,
+        toolDiffRemoved: getThemeBgAnsi("toolErrorBg") ?? fallback.toolDiffRemoved,
+    };
+}
 
 function clampNumber(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(value, max));
@@ -616,7 +658,7 @@ class DiffViewer implements Component {
 
     private getBackgroundAnsiForTone(tone: DiffTone): string | undefined {
         if (tone === "toolDiffContext") return undefined;
-        return MUTED_DIFF_BACKGROUND_ANSI[tone];
+        return getDiffBackgrounds()[tone];
     }
 
     private getForegroundForTone(tone: DiffTone): "text" | "toolDiffContext" {
@@ -638,22 +680,41 @@ class DiffViewer implements Component {
         return segments;
     }
 
+    private static readonly TOKEN_TO_THEME: Record<string, string> = {
+        keyword: "syntaxKeyword", literal: "syntaxNumber", "meta-keyword": "syntaxKeyword",
+        built_in: "syntaxType", type: "syntaxType", class: "syntaxType", name: "syntaxType",
+        string: "syntaxString", regexp: "syntaxString", "meta-string": "syntaxString",
+        link: "syntaxString", code: "syntaxString",
+        number: "syntaxNumber", symbol: "syntaxNumber",
+        comment: "syntaxComment", doctag: "syntaxComment", quote: "syntaxComment",
+        function: "syntaxFunction", title: "syntaxFunction",
+        attr: "syntaxVariable", attribute: "syntaxVariable", variable: "syntaxVariable",
+        "template-variable": "syntaxVariable", params: "syntaxVariable",
+        operator: "syntaxOperator", punctuation: "syntaxPunctuation",
+        meta: "syntaxKeyword", tag: "syntaxKeyword",
+        "selector-tag": "syntaxType", "selector-id": "syntaxKeyword",
+        "selector-pseudo": "syntaxKeyword", "selector-class": "syntaxFunction",
+        "selector-attr": "syntaxVariable",
+        addition: "syntaxString", deletion: "syntaxVariable",
+        "template-tag": "syntaxKeyword", "builtin-name": "syntaxType",
+        section: "syntaxType", bullet: "syntaxNumber",
+        emphasis: "syntaxVariable", strong: "syntaxVariable", formula: "syntaxNumber",
+        subst: "syntaxOperator",
+    };
+
     private styleSyntaxSegment(
         text: string,
         tone: DiffTone,
         token: SyntaxSegment["token"],
         highlighted: boolean,
     ): string {
+        const themeToken = token ? (this.constructor as typeof DiffViewer).TOKEN_TO_THEME[token] : undefined;
+        if (themeToken) {
+            const styled = this.theme.fg(themeToken as any, text);
+            return highlighted ? this.theme.bold(styled) : styled;
+        }
         const foreground = this.getForegroundForTone(tone);
-        const fallback = highlighted ? this.theme.bold(this.theme.fg(foreground, text)) : this.theme.fg(foreground, text);
-        const colorAnsi = getSyntaxTokenColorAnsi(token);
-        if (!colorAnsi) return fallback;
-
-        let output = "";
-        if (highlighted) output += "\x1b[1m";
-        output += `${colorAnsi}${text}\x1b[39m`;
-        if (highlighted) output += "\x1b[22m";
-        return output;
+        return highlighted ? this.theme.bold(this.theme.fg(foreground, text)) : this.theme.fg(foreground, text);
     }
 
     private styleDiffText(text: string, ranges: InlineRange[], tone: DiffTone, cursorCol?: number): string {
