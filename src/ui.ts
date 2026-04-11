@@ -691,28 +691,32 @@ class DiffViewer implements Component {
             ];
         }
 
-        const parts = [
-            "n/p hunks",
-            "↑↓ scroll",
-            "PgUp/PgDn jump",
-            "Home/End edges",
-            "←/→ context",
-            "Tab split/unified",
-            "w wrap",
-            "Enter/y approve",
-            "r/Esc reject",
-            "s steer",
-            "Shift+A auto",
-        ];
-        if (this.allowAfterEdit) {
-            parts.splice(parts.length - 3, 0, "E edit inline");
-        }
-        if (!this.diffModel) {
-            parts.splice(0, 2, "↑↓ scroll", "PgUp/PgDn jump");
-        }
-        if (mode !== "split") {
-            parts.splice(4, 1, "[/] context");
-        }
+        const { kb } = this;
+        const fmt = (binding: string[] | false, label: string): string | null => {
+            if (!binding) return null;
+            return `${binding.join("/")} ${label}`;
+        };
+
+        const parts: string[] = [
+            fmt(kb.nextHunk, "next"),
+            fmt(kb.prevHunk, "prev"),
+            fmt(kb.scrollUp, "scroll↑"),
+            fmt(kb.scrollDown, "scroll↓"),
+            fmt(kb.pageUp, "pgup"),
+            fmt(kb.pageDown, "pgdn"),
+            fmt(kb.scrollTop, "top"),
+            fmt(kb.scrollBottom, "bottom"),
+            fmt(kb.contextLess, "ctx-"),
+            fmt(kb.contextMore, "ctx+"),
+            fmt(kb.toggleMode, "split/unified"),
+            fmt(kb.toggleWrap, "wrap"),
+            fmt(kb.toggleExpand, "expand"),
+            this.allowAfterEdit ? fmt(kb.editInline, "edit") : null,
+            fmt(kb.approve, "approve"),
+            fmt(kb.reject, "reject"),
+            fmt(kb.steer, "steer"),
+            fmt(kb.autoApprove, "auto"),
+        ].filter((p): p is string => p !== null);
         return [truncateToWidth(this.theme.fg("dim", parts.join(" • ")), width, "", false)];
     }
 
