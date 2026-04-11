@@ -278,7 +278,6 @@ class DiffViewer implements Component {
         private readonly allowAfterEdit: boolean,
         private readonly collapsedHeightPercent: number = 30,
         private readonly expandedHeightPercent: number = 100,
-        private readonly matchBinding: (data: string, binding: string[] | false | undefined) => boolean = () => false,
         keybindings?: DiffKeybindings,
     ) {
         this.kb = keybindings ?? DEFAULT_KEYBINDINGS;
@@ -535,6 +534,43 @@ class DiffViewer implements Component {
 
     isExpanded(): boolean {
         return this.expandedView;
+    }
+
+    private buildKeymap(layout: ViewerLayout): Map<string, () => boolean> {
+        const { kb } = this;
+        const actionDefs: Array<[string[] | false, () => boolean]> = [
+            [kb.editInline, () => this.allowAfterEdit ? this.enterInlineEditMode() : false],
+            [kb.scrollUp, () => this.setScrollOffset(this.scrollOffset - 1)],
+            [kb.scrollDown, () => this.setScrollOffset(this.scrollOffset + 1)],
+            [kb.pageUp, () => this.setScrollOffset(this.scrollOffset - layout.viewportHeight)],
+            [kb.pageDown, () => this.setScrollOffset(this.scrollOffset + layout.viewportHeight)],
+            [kb.scrollTop, () => this.setScrollOffset(0)],
+            [kb.scrollBottom, () => this.setScrollOffset(layout.maxScrollOffset)],
+            [kb.nextHunk, () => this.jumpToHunk(layout.currentHunkIndex + 1)],
+            [kb.prevHunk, () => this.jumpToHunk(layout.currentHunkIndex - 1)],
+            [kb.contextLess, () => this.adjustContext(-1)],
+            [kb.contextMore, () => this.adjustContext(1)],
+            [kb.toggleMode, () => this.toggleMode()],
+            [kb.toggleWrap, () => this.toggleWrap()],
+        ];
+        const keymap = new Map<string, () => boolean>();
+        for (const [binding, action] of actionDefs) {
+            if (!binding) continue;
+            for (const key of binding) keymap.set(key, action);
+        }
+        return keymap;
+    }
+
+    private resolveAction(data: string, layout: ViewerLayout): (() => boolean) | undefined {
+        const keymap = this.buildKeymap(layout);
+        const direct = keymap.get(data);
+        if (direct) return direct;
+        for (const [key, action] of keymap) {
+            if (key.includes("+") || key.length > 1) {
+                if (matchesKey(data, key)) return action;
+            }
+        }
+        return undefined;
     }
 
     setExpanded(value: boolean): void {
@@ -1293,27 +1329,8 @@ class DiffViewer implements Component {
             return true;
         }
 
-        const { kb } = this;
-        const actions: Array<[string[] | false | undefined, () => boolean]> = [
-            [kb.editInline, () => this.allowAfterEdit ? this.enterInlineEditMode() : false],
-            [kb.scrollUp, () => this.setScrollOffset(this.scrollOffset - 1)],
-            [kb.scrollDown, () => this.setScrollOffset(this.scrollOffset + 1)],
-            [kb.pageUp, () => this.setScrollOffset(this.scrollOffset - layout.viewportHeight)],
-            [kb.pageDown, () => this.setScrollOffset(this.scrollOffset + layout.viewportHeight)],
-            [kb.scrollTop, () => this.setScrollOffset(0)],
-            [kb.scrollBottom, () => this.setScrollOffset(layout.maxScrollOffset)],
-            [kb.nextHunk, () => this.jumpToHunk(layout.currentHunkIndex + 1)],
-            [kb.prevHunk, () => this.jumpToHunk(layout.currentHunkIndex - 1)],
-            [kb.contextLess, () => this.adjustContext(-1)],
-            [kb.contextMore, () => this.adjustContext(1)],
-            [kb.toggleMode, () => this.toggleMode()],
-            [kb.toggleWrap, () => this.toggleWrap()],
-        ];
-
-        for (const [binding, action] of actions) {
-            if (this.matchBinding(data, binding)) return action();
-        }
-        return false;
+        const action = this.resolveAction(data, layout);
+        return action ? action() : false;
     }
 
     render(width: number): string[] {
@@ -1436,7 +1453,7 @@ export async function reviewChangePreview(
     if (!expandableLayout) {
         const decision = await ctx.ui.custom<DiffDecision>(
             (tui, theme, _kb, done) => {
-                const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit, 30, 100, matchesBinding, kb);
+                const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit, 30, 100, kb);
                 const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
                 const previousShowHardwareCursor = tui.getShowHardwareCursor();
                 const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
@@ -1499,7 +1516,7 @@ export async function reviewChangePreview(
     const decision = await ctx.ui.custom<DiffDecision>(
         (tui, theme, _kb, done) => {
             const collapsedPct = parseInt(collapsedHeight, 10) || 30;
-            const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit, collapsedPct, 100, matchesBinding, kb);
+            const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit, collapsedPct, 100, kb);
             const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
             const previousShowHardwareCursor = tui.getShowHardwareCursor();
             const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
@@ -1509,7 +1526,7 @@ export async function reviewChangePreview(
                 ctx.ui.custom<DiffDecision | { action: "collapse" }>(
                     (oTui, oTheme, _oKb, oDone) => {
                         const expandedPct = parseInt(expandedHeight, 10) || 100;
-                        const oViewer = new DiffViewer(oTui, oTheme, preview, allowAfterEdit, expandedPct, expandedPct, matchesBinding, kb);
+                        const oViewer = new DiffViewer(oTui, oTheme, preview, allowAfterEdit, expandedPct, expandedPct, kb);
                         oViewer.setExpanded(true);
                         const oFramed = new BorderFrame(oViewer, (text) => oTheme.fg("accent", text));
                         const oPrevCursor = oTui.getShowHardwareCursor();
