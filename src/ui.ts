@@ -700,7 +700,7 @@ class DiffViewer implements Component {
         const parts: string[] = [
             fmt(kb.prevHunk, "prev"),
             fmt(kb.nextHunk, "next"),
-            kb.scrollUp && kb.scrollDown ? `↑↓ scroll` : null,
+            kb.scrollUp && kb.scrollDown ? `${kb.scrollUp.map((k) => k === "up" ? "↑" : k).join(",")}/${kb.scrollDown.map((k) => k === "down" ? "↓" : k).join(",")} scroll` : null,
             kb.pageUp && kb.pageDown ? `pgup/pgdn jump` : null,
             kb.scrollTop && kb.scrollBottom ? `top/end edges` : null,
             kb.contextLess && kb.contextMore ? `${kb.contextLess.join("/")}/${kb.contextMore.join("/")} ctx-/+` : null,
