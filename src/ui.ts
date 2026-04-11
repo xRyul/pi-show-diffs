@@ -32,7 +32,7 @@ export interface DiffDecision {
     afterTextOverride?: string;
 }
 
-import type { DiffKeybindings } from "./config.js";
+import { type DiffKeybindings, DEFAULT_KEYBINDINGS } from "./config.js";
 
 interface ReviewOptions {
     allowAfterEdit?: boolean;
@@ -269,7 +269,7 @@ class DiffViewer implements Component {
     private lastRenderedDiffCache?: { key: string; value: RenderedDiffCache };
     private readonly cursorlessRowCache = new Map<string, RenderedCell>();
     private readonly gapLineCache = new Map<string, string>();
-    kb?: DiffKeybindings;
+    kb: DiffKeybindings;
 
     constructor(
         private readonly tui: { terminal: { rows: number } },
@@ -281,7 +281,7 @@ class DiffViewer implements Component {
         private readonly matchBinding: (data: string, binding: string[] | false | undefined) => boolean = () => false,
         keybindings?: DiffKeybindings,
     ) {
-        this.kb = keybindings;
+        this.kb = keybindings ?? DEFAULT_KEYBINDINGS;
         this.preview = preview;
         this.initialAfterText = preview.afterText;
         this.baseDiffModel = preview.diffModel;
@@ -1293,21 +1293,26 @@ class DiffViewer implements Component {
             return true;
         }
 
-        const mb = this.matchBinding;
         const { kb } = this;
-        if (mb(data, kb?.editInline) && this.allowAfterEdit) return this.enterInlineEditMode();
-        if (mb(data, kb?.scrollUp)) return this.setScrollOffset(this.scrollOffset - 1);
-        if (mb(data, kb?.scrollDown)) return this.setScrollOffset(this.scrollOffset + 1);
-        if (mb(data, kb?.pageUp)) return this.setScrollOffset(this.scrollOffset - layout.viewportHeight);
-        if (mb(data, kb?.pageDown)) return this.setScrollOffset(this.scrollOffset + layout.viewportHeight);
-        if (mb(data, kb?.scrollTop)) return this.setScrollOffset(0);
-        if (mb(data, kb?.scrollBottom)) return this.setScrollOffset(layout.maxScrollOffset);
-        if (mb(data, kb?.nextHunk)) return this.jumpToHunk(layout.currentHunkIndex + 1);
-        if (mb(data, kb?.prevHunk)) return this.jumpToHunk(layout.currentHunkIndex - 1);
-        if (mb(data, kb?.contextLess)) return this.adjustContext(-1);
-        if (mb(data, kb?.contextMore)) return this.adjustContext(1);
-        if (mb(data, kb?.toggleMode)) return this.toggleMode();
-        if (mb(data, kb?.toggleWrap)) return this.toggleWrap();
+        const actions: Array<[string[] | false | undefined, () => boolean]> = [
+            [kb.editInline, () => this.allowAfterEdit ? this.enterInlineEditMode() : false],
+            [kb.scrollUp, () => this.setScrollOffset(this.scrollOffset - 1)],
+            [kb.scrollDown, () => this.setScrollOffset(this.scrollOffset + 1)],
+            [kb.pageUp, () => this.setScrollOffset(this.scrollOffset - layout.viewportHeight)],
+            [kb.pageDown, () => this.setScrollOffset(this.scrollOffset + layout.viewportHeight)],
+            [kb.scrollTop, () => this.setScrollOffset(0)],
+            [kb.scrollBottom, () => this.setScrollOffset(layout.maxScrollOffset)],
+            [kb.nextHunk, () => this.jumpToHunk(layout.currentHunkIndex + 1)],
+            [kb.prevHunk, () => this.jumpToHunk(layout.currentHunkIndex - 1)],
+            [kb.contextLess, () => this.adjustContext(-1)],
+            [kb.contextMore, () => this.adjustContext(1)],
+            [kb.toggleMode, () => this.toggleMode()],
+            [kb.toggleWrap, () => this.toggleWrap()],
+        ];
+
+        for (const [binding, action] of actions) {
+            if (this.matchBinding(data, binding)) return action();
+        }
         return false;
     }
 
@@ -1449,19 +1454,19 @@ export async function reviewChangePreview(
                             return;
                         }
 
-                        if (matchesBinding(data, kb?.approve)) {
+                        if (matchesBinding(data, kb.approve)) {
                             done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
                             return;
                         }
-                        if (matchesBinding(data, kb?.reject)) {
+                        if (matchesBinding(data, kb.reject)) {
                             done({ action: "reject" });
                             return;
                         }
-                        if (matchesBinding(data, kb?.steer)) {
+                        if (matchesBinding(data, kb.steer)) {
                             done({ action: "steer" });
                             return;
                         }
-                        if (matchesBinding(data, kb?.autoApprove)) {
+                        if (matchesBinding(data, kb.autoApprove)) {
                             done({ action: "approve_and_enable_auto", afterTextOverride: viewer.getAfterTextOverride() });
                             return;
                         }
@@ -1523,23 +1528,23 @@ export async function reviewChangePreview(
                                     return;
                                 }
 
-                                if (matchesBinding(data, kb?.toggleExpand)) {
+                                if (matchesBinding(data, kb.toggleExpand)) {
                                     oDone({ action: "collapse" } as any);
                                     return;
                                 }
-                                if (matchesBinding(data, kb?.approve)) {
+                                if (matchesBinding(data, kb.approve)) {
                                     oDone({ action: "approve", afterTextOverride: oViewer.getAfterTextOverride() });
                                     return;
                                 }
-                                if (matchesBinding(data, kb?.reject)) {
+                                if (matchesBinding(data, kb.reject)) {
                                     oDone({ action: "reject" });
                                     return;
                                 }
-                                if (matchesBinding(data, kb?.steer)) {
+                                if (matchesBinding(data, kb.steer)) {
                                     oDone({ action: "steer" });
                                     return;
                                 }
-                                if (matchesBinding(data, kb?.autoApprove)) {
+                                if (matchesBinding(data, kb.autoApprove)) {
                                     oDone({ action: "approve_and_enable_auto", afterTextOverride: oViewer.getAfterTextOverride() });
                                     return;
                                 }
@@ -1580,23 +1585,23 @@ export async function reviewChangePreview(
                         return;
                     }
 
-                    if (matchesBinding(data, kb?.toggleExpand)) {
+                    if (matchesBinding(data, kb.toggleExpand)) {
                         launchOverlay();
                         return;
                     }
-                    if (matchesBinding(data, kb?.approve)) {
+                    if (matchesBinding(data, kb.approve)) {
                         done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
                         return;
                     }
-                    if (matchesBinding(data, kb?.reject)) {
+                    if (matchesBinding(data, kb.reject)) {
                         done({ action: "reject" });
                         return;
                     }
-                    if (matchesBinding(data, kb?.steer)) {
+                    if (matchesBinding(data, kb.steer)) {
                         done({ action: "steer" });
                         return;
                     }
-                    if (matchesBinding(data, kb?.autoApprove)) {
+                    if (matchesBinding(data, kb.autoApprove)) {
                         done({ action: "approve_and_enable_auto", afterTextOverride: viewer.getAfterTextOverride() });
                         return;
                     }
