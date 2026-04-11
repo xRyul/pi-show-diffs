@@ -267,6 +267,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			collapsedHeight: config.collapsedHeight,
 			expandedHeight: config.expandedHeight,
 			expandedWidth: config.expandedWidth,
+			keybindings: config.keybindings,
 		});
 
 		if (decision.action === "approve_and_enable_auto") {
