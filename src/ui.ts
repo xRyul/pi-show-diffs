@@ -34,6 +34,9 @@ export interface DiffDecision {
 interface ReviewOptions {
     allowAfterEdit?: boolean;
     expandableLayout?: boolean;
+    collapsedHeight?: string;
+    expandedHeight?: string;
+    expandedWidth?: string;
 }
 
 type ViewMode = "split" | "unified";
@@ -268,6 +271,7 @@ class DiffViewer implements Component {
         private readonly theme: Theme,
         preview: ChangePreview,
         private readonly allowAfterEdit: boolean,
+        private readonly collapsedHeightPercent: number = 30,
     ) {
         this.preview = preview;
         this.initialAfterText = preview.afterText;
@@ -510,7 +514,7 @@ class DiffViewer implements Component {
         if (this.expandedView) {
             return Math.max(16, rows - 2);
         }
-        return Math.max(10, Math.floor(rows * 0.3));
+        return Math.max(10, Math.floor(rows * this.collapsedHeightPercent / 100));
     }
 
     toggleExpand(): boolean {
@@ -1343,6 +1347,9 @@ export async function reviewChangePreview(
     const allowAfterEdit =
         Boolean(options.allowAfterEdit) && preview.beforeText !== undefined && preview.afterText !== undefined;
     const expandableLayout = Boolean(options.expandableLayout);
+    const collapsedHeight = options.collapsedHeight ?? "30%";
+    const expandedHeight = options.expandedHeight ?? "100%";
+    const expandedWidth = options.expandedWidth ?? "100%";
     const initialAfterText = preview.afterText;
     let currentPreview = preview;
 
@@ -1465,7 +1472,8 @@ export async function reviewChangePreview(
     // Expandable layout: non-overlay compact, Ctrl+F stacks full overlay on top
     const decision = await ctx.ui.custom<DiffDecision>(
         (tui, theme, _kb, done) => {
-            const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit);
+            const collapsedPct = parseInt(collapsedHeight, 10) || 30;
+            const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit, collapsedPct);
             const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
             const previousShowHardwareCursor = tui.getShowHardwareCursor();
             const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
@@ -1526,9 +1534,10 @@ export async function reviewChangePreview(
                         overlay: true,
                         overlayOptions: {
                             anchor: "center",
-                            width: "100%",
+                            width: expandedWidth,
+                            maxHeight: expandedHeight,
                             minWidth: 20,
-                            margin: 0,
+                            margin: expandedWidth === "100%" ? 0 : 1,
                         },
                     },
                 ).then((overlayDecision) => {

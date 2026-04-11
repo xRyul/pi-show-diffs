@@ -237,6 +237,9 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		const decision = await reviewChangePreview(ctx, preview, {
 			allowAfterEdit: true,
 			expandableLayout: config.expandableLayout,
+			collapsedHeight: config.collapsedHeight,
+			expandedHeight: config.expandedHeight,
+			expandedWidth: config.expandedWidth,
 		});
 
 		if (decision.action === "approve_and_enable_auto") {
