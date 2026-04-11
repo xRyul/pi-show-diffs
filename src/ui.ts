@@ -698,16 +698,12 @@ class DiffViewer implements Component {
         };
 
         const parts: string[] = [
-            fmt(kb.nextHunk, "next"),
             fmt(kb.prevHunk, "prev"),
-            fmt(kb.scrollUp, "scroll↑"),
-            fmt(kb.scrollDown, "scroll↓"),
-            fmt(kb.pageUp, "pgup"),
-            fmt(kb.pageDown, "pgdn"),
-            fmt(kb.scrollTop, "top"),
-            fmt(kb.scrollBottom, "bottom"),
-            fmt(kb.contextLess, "ctx-"),
-            fmt(kb.contextMore, "ctx+"),
+            fmt(kb.nextHunk, "next"),
+            kb.scrollUp && kb.scrollDown ? `↑↓ scroll` : null,
+            kb.pageUp && kb.pageDown ? `pgup/pgdn jump` : null,
+            kb.scrollTop && kb.scrollBottom ? `top/end edges` : null,
+            kb.contextLess && kb.contextMore ? `${kb.contextLess.join("/")}/${kb.contextMore.join("/")} ctx-/+` : null,
             fmt(kb.toggleMode, "split/unified"),
             fmt(kb.toggleWrap, "wrap"),
             fmt(kb.toggleExpand, "expand"),
