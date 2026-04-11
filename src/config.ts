@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
 
 export interface DiffApprovalConfig {
 	autoApprove: boolean;
@@ -10,7 +10,7 @@ export const DEFAULT_CONFIG: DiffApprovalConfig = {
 	autoApprove: false,
 };
 
-export const CONFIG_PATH = join(homedir(), ".pi", "agent", "extensions", "pi-show-diffs.json");
+export const CONFIG_PATH = join(getAgentDir(), "extensions", "pi-show-diffs.json");
 
 export function loadConfig(): DiffApprovalConfig {
 	try {
