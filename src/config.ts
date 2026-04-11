@@ -10,6 +10,10 @@ export interface DiffKeybindings {
 	autoApprove: string[] | false;
 	scrollUp: string[] | false;
 	scrollDown: string[] | false;
+	pageUp: string[] | false;
+	pageDown: string[] | false;
+	scrollTop: string[] | false;
+	scrollBottom: string[] | false;
 	nextHunk: string[] | false;
 	prevHunk: string[] | false;
 	toggleMode: string[] | false;
@@ -27,6 +31,10 @@ export const DEFAULT_KEYBINDINGS: DiffKeybindings = {
 	autoApprove: ["A"],
 	scrollUp: ["up"],
 	scrollDown: ["down"],
+	pageUp: ["pageUp"],
+	pageDown: ["pageDown"],
+	scrollTop: ["home"],
+	scrollBottom: ["end"],
 	nextHunk: ["n"],
 	prevHunk: ["p"],
 	toggleMode: ["Tab"],
@@ -82,6 +90,10 @@ export function loadConfig(): DiffApprovalConfig {
 				autoApprove: parseKb("autoApprove"),
 				scrollUp: parseKb("scrollUp"),
 				scrollDown: parseKb("scrollDown"),
+				pageUp: parseKb("pageUp"),
+				pageDown: parseKb("pageDown"),
+				scrollTop: parseKb("scrollTop"),
+				scrollBottom: parseKb("scrollBottom"),
 				nextHunk: parseKb("nextHunk"),
 				prevHunk: parseKb("prevHunk"),
 				toggleMode: parseKb("toggleMode"),

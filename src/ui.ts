@@ -1298,10 +1298,10 @@ class DiffViewer implements Component {
         if (mb(data, kb?.editInline) && this.allowAfterEdit) return this.enterInlineEditMode();
         if (mb(data, kb?.scrollUp)) return this.setScrollOffset(this.scrollOffset - 1);
         if (mb(data, kb?.scrollDown)) return this.setScrollOffset(this.scrollOffset + 1);
-        if (matchesKey(data, "pageUp")) return this.setScrollOffset(this.scrollOffset - layout.viewportHeight);
-        if (matchesKey(data, "pageDown")) return this.setScrollOffset(this.scrollOffset + layout.viewportHeight);
-        if (matchesKey(data, "home")) return this.setScrollOffset(0);
-        if (matchesKey(data, "end")) return this.setScrollOffset(layout.maxScrollOffset);
+        if (mb(data, kb?.pageUp)) return this.setScrollOffset(this.scrollOffset - layout.viewportHeight);
+        if (mb(data, kb?.pageDown)) return this.setScrollOffset(this.scrollOffset + layout.viewportHeight);
+        if (mb(data, kb?.scrollTop)) return this.setScrollOffset(0);
+        if (mb(data, kb?.scrollBottom)) return this.setScrollOffset(layout.maxScrollOffset);
         if (mb(data, kb?.nextHunk)) return this.jumpToHunk(layout.currentHunkIndex + 1);
         if (mb(data, kb?.prevHunk)) return this.jumpToHunk(layout.currentHunkIndex - 1);
         if (mb(data, kb?.contextLess)) return this.adjustContext(-1);
