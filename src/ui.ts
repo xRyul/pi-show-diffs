@@ -272,6 +272,7 @@ class DiffViewer implements Component {
         preview: ChangePreview,
         private readonly allowAfterEdit: boolean,
         private readonly collapsedHeightPercent: number = 30,
+        private readonly expandedHeightPercent: number = 100,
     ) {
         this.preview = preview;
         this.initialAfterText = preview.afterText;
@@ -512,7 +513,8 @@ class DiffViewer implements Component {
     private getTotalHeight(): number {
         const rows = this.tui.terminal.rows || 24;
         if (this.expandedView) {
-            return Math.max(16, rows - 2);
+            const h = Math.floor(rows * this.expandedHeightPercent / 100) - 4;
+            return Math.max(16, Math.min(h, rows - 2));
         }
         return Math.max(10, Math.floor(rows * this.collapsedHeightPercent / 100));
     }
@@ -1482,7 +1484,8 @@ export async function reviewChangePreview(
             const launchOverlay = () => {
                 ctx.ui.custom<DiffDecision | { action: "collapse" }>(
                     (oTui, oTheme, _oKb, oDone) => {
-                        const oViewer = new DiffViewer(oTui, oTheme, preview, allowAfterEdit);
+                        const expandedPct = parseInt(expandedHeight, 10) || 100;
+                        const oViewer = new DiffViewer(oTui, oTheme, preview, allowAfterEdit, expandedPct, expandedPct);
                         oViewer.setExpanded(true);
                         const oFramed = new BorderFrame(oViewer, (text) => oTheme.fg("accent", text));
                         const oPrevCursor = oTui.getShowHardwareCursor();
