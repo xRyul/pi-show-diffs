@@ -8,6 +8,7 @@ import {
     wrapTextWithAnsi,
     type Component,
     type SizeValue,
+    type KeyId,
 } from "@mariozechner/pi-tui";
 
 import {
@@ -567,7 +568,7 @@ class DiffViewer implements Component {
         if (direct) return direct;
         for (const [key, action] of keymap) {
             if (key.includes("+") || key.length > 1) {
-                if (matchesKey(data, key)) return action;
+                if (matchesKey(data, key as KeyId)) return action;
             }
         }
         return undefined;
@@ -1384,12 +1385,12 @@ export async function reviewChangePreview(
     const collapsedHeight = options.collapsedHeight ?? "30%";
     const expandedHeight = options.expandedHeight ?? "100%";
     const expandedWidth = options.expandedWidth ?? "100%";
-    const kb = options.keybindings;
+    const kb = options.keybindings ?? DEFAULT_KEYBINDINGS;
 
     const matchesBinding = (data: string, binding: string[] | false | undefined): boolean => {
         if (!binding) return false;
         return binding.some((key) => {
-            if (key.includes("+") || key.length > 1) return matchesKey(data, key);
+            if (key.includes("+") || key.length > 1) return matchesKey(data, key as KeyId);
             return data === key;
         });
     };
