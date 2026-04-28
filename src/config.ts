@@ -26,5 +26,10 @@ export function loadConfig(): DiffApprovalConfig {
 
 export function saveConfig(config: DiffApprovalConfig): void {
 	mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-	writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+	let existing: Record<string, unknown> = {};
+	try {
+		existing = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+	} catch {}
+	const merged = { ...existing, ...config };
+	writeFileSync(CONFIG_PATH, `${JSON.stringify(merged, null, 2)}\n`, "utf-8");
 }
