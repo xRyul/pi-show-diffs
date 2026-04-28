@@ -37,16 +37,29 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		);
 	}
 
-	function setConfig(next: DiffApprovalConfig, ctx?: ExtensionContext, notify = true) {
-		config = next;
+	function setConfig(next: Partial<DiffApprovalConfig>, ctx?: ExtensionContext, notify = true) {
+		config = { ...config, ...next };
 		saveConfig(config);
 		if (!ctx) return;
 		updateStatus(ctx);
 		if (!notify || !ctx.hasUI) return;
-		ctx.ui.notify(
-			config.autoApprove ? "Auto-approve is ON for file changes." : "Manual diff review is ON.",
-			"info",
-		);
+		ctx.ui.notify(statusText(), "info");
+	}
+
+	function statusText(): string {
+		return [
+			"pi-show-diffs",
+			`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
+			`Layout: ${config.expandableLayout ? "expandable" : "overlay"}`,
+			`Collapsed height: ${config.collapsedHeight}`,
+			`Expanded height: ${config.expandedHeight}`,
+			`Expanded width: ${config.expandedWidth}`,
+			`Config: ${CONFIG_PATH}`,
+		].join("\n");
+	}
+
+	function notifyStatus(ctx: ExtensionContext): void {
+		ctx.ui.notify(statusText(), "info");
 	}
 
 	async function handleCommand(args: string, ctx: ExtensionContext) {
@@ -68,25 +81,18 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		}
 
 		if (command === "status") {
-			ctx.ui.notify(
-				[
-					"pi-show-diffs",
-					`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
-					`Config: ${CONFIG_PATH}`,
-				].join("\n"),
-				"info",
-			);
+			notifyStatus(ctx);
 			return;
 		}
 
 		const choice = await ctx.ui.select(
-			[
-				"pi-show-diffs",
-				`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
-				`Config: ${CONFIG_PATH}`,
-			].join("\n"),
+			statusText(),
 			[
 				config.autoApprove ? "Turn auto-approve off" : "Turn auto-approve on",
+				config.expandableLayout ? "Turn expandable layout off" : "Turn expandable layout on",
+				`Collapsed height (${config.collapsedHeight})`,
+				`Expanded height (${config.expandedHeight})`,
+				`Expanded width (${config.expandedWidth})`,
 				"Show status",
 				"Cancel",
 			],
@@ -102,15 +108,36 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			return;
 		}
 
+		if (choice === "Turn expandable layout on") {
+			setConfig({ expandableLayout: true }, ctx);
+			return;
+		}
+
+		if (choice === "Turn expandable layout off") {
+			setConfig({ expandableLayout: false }, ctx);
+			return;
+		}
+
+		if (choice?.startsWith("Collapsed height")) {
+			const value = await ctx.ui.editor("Collapsed height (e.g. 30%)", config.collapsedHeight);
+			if (value?.trim()) setConfig({ collapsedHeight: value.trim() }, ctx);
+			return;
+		}
+
+		if (choice?.startsWith("Expanded height")) {
+			const value = await ctx.ui.editor("Expanded height (e.g. 100%)", config.expandedHeight);
+			if (value?.trim()) setConfig({ expandedHeight: value.trim() }, ctx);
+			return;
+		}
+
+		if (choice?.startsWith("Expanded width")) {
+			const value = await ctx.ui.editor("Expanded width (e.g. 100%)", config.expandedWidth);
+			if (value?.trim()) setConfig({ expandedWidth: value.trim() }, ctx);
+			return;
+		}
+
 		if (choice === "Show status") {
-			ctx.ui.notify(
-				[
-					"pi-show-diffs",
-					`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
-					`Config: ${CONFIG_PATH}`,
-				].join("\n"),
-				"info",
-			);
+			notifyStatus(ctx);
 		}
 	}
 
@@ -236,6 +263,10 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 
 		const decision = await reviewChangePreview(ctx, preview, {
 			allowAfterEdit: true,
+			expandableLayout: config.expandableLayout,
+			collapsedHeight: config.collapsedHeight,
+			expandedHeight: config.expandedHeight,
+			expandedWidth: config.expandedWidth,
 		});
 
 		if (decision.action === "approve_and_enable_auto") {
