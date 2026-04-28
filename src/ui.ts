@@ -7,6 +7,7 @@ import {
     visibleWidth,
     wrapTextWithAnsi,
     type Component,
+    type SizeValue,
 } from "@mariozechner/pi-tui";
 
 import {
@@ -1537,8 +1538,8 @@ export async function reviewChangePreview(
                         overlay: true,
                         overlayOptions: {
                             anchor: "center",
-                            width: expandedWidth,
-                            maxHeight: expandedHeight,
+                            width: expandedWidth as SizeValue,
+                            maxHeight: expandedHeight as SizeValue,
                             minWidth: 20,
                             margin: expandedWidth === "100%" ? 0 : 1,
                         },

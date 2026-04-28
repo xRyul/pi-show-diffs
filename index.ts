@@ -37,8 +37,8 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		);
 	}
 
-	function setConfig(next: DiffApprovalConfig, ctx?: ExtensionContext, notify = true) {
-		config = next;
+	function setConfig(next: Partial<DiffApprovalConfig>, ctx?: ExtensionContext, notify = true) {
+		config = { ...config, ...next };
 		saveConfig(config);
 		if (!ctx) return;
 		updateStatus(ctx);
