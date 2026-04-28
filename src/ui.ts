@@ -7,6 +7,8 @@ import {
     visibleWidth,
     wrapTextWithAnsi,
     type Component,
+    type SizeValue,
+    type KeyId,
 } from "@mariozechner/pi-tui";
 
 import {
@@ -31,8 +33,15 @@ export interface DiffDecision {
     afterTextOverride?: string;
 }
 
+import { type DiffKeybindings, DEFAULT_KEYBINDINGS } from "./config.js";
+
 interface ReviewOptions {
     allowAfterEdit?: boolean;
+    expandableLayout?: boolean;
+    collapsedHeight?: string;
+    expandedHeight?: string;
+    expandedWidth?: string;
+    keybindings?: DiffKeybindings;
 }
 
 type ViewMode = "split" | "unified";
@@ -242,6 +251,7 @@ class DiffViewer implements Component {
     private scrollOffset = 0;
     private lastWidth = 80;
     private wrapLongLines = true;
+    private expandedView = false;
     private preferredMode: ViewMode;
     private baseDiffModel?: StructuredDiff;
     private diffModel?: StructuredDiff;
@@ -260,13 +270,18 @@ class DiffViewer implements Component {
     private lastRenderedDiffCache?: { key: string; value: RenderedDiffCache };
     private readonly cursorlessRowCache = new Map<string, RenderedCell>();
     private readonly gapLineCache = new Map<string, string>();
+    kb: DiffKeybindings;
 
     constructor(
         private readonly tui: { terminal: { rows: number } },
         private readonly theme: Theme,
         preview: ChangePreview,
         private readonly allowAfterEdit: boolean,
+        private readonly collapsedHeightPercent: number = 30,
+        private readonly expandedHeightPercent: number = 100,
+        keybindings?: DiffKeybindings,
     ) {
+        this.kb = keybindings ?? DEFAULT_KEYBINDINGS;
         this.preview = preview;
         this.initialAfterText = preview.afterText;
         this.baseDiffModel = preview.diffModel;
@@ -505,7 +520,63 @@ class DiffViewer implements Component {
 
     private getTotalHeight(): number {
         const rows = this.tui.terminal.rows || 24;
-        return Math.max(16, Math.min(rows - 2, Math.floor(rows * 0.9)));
+        if (this.expandedView) {
+            const h = Math.floor(rows * this.expandedHeightPercent / 100) - 4;
+            return Math.max(16, Math.min(h, rows - 2));
+        }
+        return Math.max(10, Math.floor(rows * this.collapsedHeightPercent / 100));
+    }
+
+    toggleExpand(): boolean {
+        this.expandedView = !this.expandedView;
+        this.lastRenderedDiffCache = undefined;
+        return true;
+    }
+
+    isExpanded(): boolean {
+        return this.expandedView;
+    }
+
+    private buildKeymap(layout: ViewerLayout): Map<string, () => boolean> {
+        const { kb } = this;
+        const actionDefs: Array<[string[] | false, () => boolean]> = [
+            [kb.editInline, () => this.allowAfterEdit ? this.enterInlineEditMode() : false],
+            [kb.scrollUp, () => this.setScrollOffset(this.scrollOffset - 1)],
+            [kb.scrollDown, () => this.setScrollOffset(this.scrollOffset + 1)],
+            [kb.pageUp, () => this.setScrollOffset(this.scrollOffset - layout.viewportHeight)],
+            [kb.pageDown, () => this.setScrollOffset(this.scrollOffset + layout.viewportHeight)],
+            [kb.scrollTop, () => this.setScrollOffset(0)],
+            [kb.scrollBottom, () => this.setScrollOffset(layout.maxScrollOffset)],
+            [kb.nextHunk, () => this.jumpToHunk(layout.currentHunkIndex + 1)],
+            [kb.prevHunk, () => this.jumpToHunk(layout.currentHunkIndex - 1)],
+            [kb.contextLess, () => this.adjustContext(-1)],
+            [kb.contextMore, () => this.adjustContext(1)],
+            [kb.toggleMode, () => this.toggleMode()],
+            [kb.toggleWrap, () => this.toggleWrap()],
+        ];
+        const keymap = new Map<string, () => boolean>();
+        for (const [binding, action] of actionDefs) {
+            if (!binding) continue;
+            for (const key of binding) keymap.set(key, action);
+        }
+        return keymap;
+    }
+
+    private resolveAction(data: string, layout: ViewerLayout): (() => boolean) | undefined {
+        const keymap = this.buildKeymap(layout);
+        const direct = keymap.get(data);
+        if (direct) return direct;
+        for (const [key, action] of keymap) {
+            if (key.includes("+") || key.length > 1) {
+                if (matchesKey(data, key as KeyId)) return action;
+            }
+        }
+        return undefined;
+    }
+
+    setExpanded(value: boolean): void {
+        this.expandedView = value;
+        this.lastRenderedDiffCache = undefined;
     }
 
     private getLineNumberWidth(): number {
@@ -621,28 +692,28 @@ class DiffViewer implements Component {
             ];
         }
 
-        const parts = [
-            "n/p hunks",
-            "↑↓ scroll",
-            "PgUp/PgDn jump",
-            "Home/End edges",
-            "←/→ context",
-            "Tab split/unified",
-            "w wrap",
-            "Enter/y approve",
-            "r/Esc reject",
-            "s steer",
-            "Shift+A auto",
-        ];
-        if (this.allowAfterEdit) {
-            parts.splice(parts.length - 3, 0, "E edit inline");
-        }
-        if (!this.diffModel) {
-            parts.splice(0, 2, "↑↓ scroll", "PgUp/PgDn jump");
-        }
-        if (mode !== "split") {
-            parts.splice(4, 1, "[/] context");
-        }
+        const { kb } = this;
+        const fmt = (binding: string[] | false, label: string): string | null => {
+            if (!binding) return null;
+            return `${binding.join("/")} ${label}`;
+        };
+
+        const parts: string[] = [
+            fmt(kb.prevHunk, "prev"),
+            fmt(kb.nextHunk, "next"),
+            kb.scrollUp && kb.scrollDown ? `${kb.scrollUp.map((k) => k === "up" ? "↑" : k).join(",")}/${kb.scrollDown.map((k) => k === "down" ? "↓" : k).join(",")} scroll` : null,
+            kb.pageUp && kb.pageDown ? `pgup/pgdn jump` : null,
+            kb.scrollTop && kb.scrollBottom ? `top/end edges` : null,
+            kb.contextLess && kb.contextMore ? `${kb.contextLess.join("/")}/${kb.contextMore.join("/")} ctx-/+` : null,
+            fmt(kb.toggleMode, "split/unified"),
+            fmt(kb.toggleWrap, "wrap"),
+            fmt(kb.toggleExpand, "expand"),
+            this.allowAfterEdit ? fmt(kb.editInline, "edit") : null,
+            fmt(kb.approve, "approve"),
+            fmt(kb.reject, "reject"),
+            fmt(kb.steer, "steer"),
+            fmt(kb.autoApprove, "auto"),
+        ].filter((p): p is string => p !== null);
         return [truncateToWidth(this.theme.fg("dim", parts.join(" • ")), width, "", false)];
     }
 
@@ -1259,20 +1330,8 @@ class DiffViewer implements Component {
             return true;
         }
 
-        if ((data === "e" || data === "E") && this.allowAfterEdit) return this.enterInlineEditMode();
-        if (matchesKey(data, "up")) return this.setScrollOffset(this.scrollOffset - 1);
-        if (matchesKey(data, "down")) return this.setScrollOffset(this.scrollOffset + 1);
-        if (matchesKey(data, "pageUp")) return this.setScrollOffset(this.scrollOffset - layout.viewportHeight);
-        if (matchesKey(data, "pageDown")) return this.setScrollOffset(this.scrollOffset + layout.viewportHeight);
-        if (matchesKey(data, "home")) return this.setScrollOffset(0);
-        if (matchesKey(data, "end")) return this.setScrollOffset(layout.maxScrollOffset);
-        if (data === "n") return this.jumpToHunk(layout.currentHunkIndex + 1);
-        if (data === "p") return this.jumpToHunk(layout.currentHunkIndex - 1);
-        if (matchesKey(data, "left") || data === "[") return this.adjustContext(-1);
-        if (matchesKey(data, "right") || data === "]") return this.adjustContext(1);
-        if (matchesKey(data, "tab")) return this.toggleMode();
-        if (data === "w") return this.toggleWrap();
-        return false;
+        const action = this.resolveAction(data, layout);
+        return action ? action() : false;
     }
 
     render(width: number): string[] {
@@ -1322,6 +1381,19 @@ export async function reviewChangePreview(
 ): Promise<DiffDecision> {
     const allowAfterEdit =
         Boolean(options.allowAfterEdit) && preview.beforeText !== undefined && preview.afterText !== undefined;
+    const expandableLayout = Boolean(options.expandableLayout);
+    const collapsedHeight = options.collapsedHeight ?? "30%";
+    const expandedHeight = options.expandedHeight ?? "100%";
+    const expandedWidth = options.expandedWidth ?? "100%";
+    const kb = options.keybindings ?? DEFAULT_KEYBINDINGS;
+
+    const matchesBinding = (data: string, binding: string[] | false | undefined): boolean => {
+        if (!binding) return false;
+        return binding.some((key) => {
+            if (key.includes("+") || key.length > 1) return matchesKey(data, key as KeyId);
+            return data === key;
+        });
+    };
     const initialAfterText = preview.afterText;
     let currentPreview = preview;
 
@@ -1379,13 +1451,145 @@ export async function reviewChangePreview(
         }
     }
 
+    if (!expandableLayout) {
+        const decision = await ctx.ui.custom<DiffDecision>(
+            (tui, theme, _kb, done) => {
+                const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit, 30, 100, kb);
+                const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
+                const previousShowHardwareCursor = tui.getShowHardwareCursor();
+                const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
+                syncCursorMode();
+
+                return {
+                    render: (width: number) => framed.render(width),
+                    invalidate: () => framed.invalidate(),
+                    handleInput: (data: string) => {
+                        if (viewer.isEditingInline()) {
+                            if (viewer.handleInput(data)) {
+                                syncCursorMode();
+                                tui.requestRender();
+                            }
+                            return;
+                        }
+
+                        if (matchesBinding(data, kb.approve)) {
+                            done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
+                            return;
+                        }
+                        if (matchesBinding(data, kb.reject)) {
+                            done({ action: "reject" });
+                            return;
+                        }
+                        if (matchesBinding(data, kb.steer)) {
+                            done({ action: "steer" });
+                            return;
+                        }
+                        if (matchesBinding(data, kb.autoApprove)) {
+                            done({ action: "approve_and_enable_auto", afterTextOverride: viewer.getAfterTextOverride() });
+                            return;
+                        }
+
+                        if (viewer.handleInput(data)) {
+                            syncCursorMode();
+                            tui.requestRender();
+                        }
+                    },
+                    dispose: () => tui.setShowHardwareCursor(previousShowHardwareCursor),
+                };
+            },
+            {
+                overlay: true,
+                overlayOptions: {
+                    anchor: "center",
+                    width: "96%",
+                    minWidth: 20,
+                    margin: 1,
+                },
+            },
+        );
+
+        if (decision.action !== "steer") return decision;
+        const feedback = await ctx.ui.editor(`How should ${preview.path} change instead?`, "");
+        return feedback?.trim() ? { action: "steer", feedback: feedback.trim() } : { action: "reject" };
+    }
+
+    // Expandable layout: non-overlay compact, Ctrl+F stacks full overlay on top
     const decision = await ctx.ui.custom<DiffDecision>(
         (tui, theme, _kb, done) => {
-            const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit);
+            const collapsedPct = parseInt(collapsedHeight, 10) || 30;
+            const viewer = new DiffViewer(tui, theme, preview, allowAfterEdit, collapsedPct, 100, kb);
             const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
             const previousShowHardwareCursor = tui.getShowHardwareCursor();
             const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
             syncCursorMode();
+
+            const launchOverlay = () => {
+                ctx.ui.custom<DiffDecision | { action: "collapse" }>(
+                    (oTui, oTheme, _oKb, oDone) => {
+                        const expandedPct = parseInt(expandedHeight, 10) || 100;
+                        const oViewer = new DiffViewer(oTui, oTheme, preview, allowAfterEdit, expandedPct, expandedPct, kb);
+                        oViewer.setExpanded(true);
+                        const oFramed = new BorderFrame(oViewer, (text) => oTheme.fg("accent", text));
+                        const oPrevCursor = oTui.getShowHardwareCursor();
+                        const oSyncCursor = () => oTui.setShowHardwareCursor(oViewer.isEditingInline() || oPrevCursor);
+                        oSyncCursor();
+
+                        return {
+                            render: (width: number) => oFramed.render(width),
+                            invalidate: () => oFramed.invalidate(),
+                            handleInput: (data: string) => {
+                                if (oViewer.isEditingInline()) {
+                                    if (oViewer.handleInput(data)) {
+                                        oSyncCursor();
+                                        oTui.requestRender();
+                                    }
+                                    return;
+                                }
+
+                                if (matchesBinding(data, kb.toggleExpand)) {
+                                    oDone({ action: "collapse" } as any);
+                                    return;
+                                }
+                                if (matchesBinding(data, kb.approve)) {
+                                    oDone({ action: "approve", afterTextOverride: oViewer.getAfterTextOverride() });
+                                    return;
+                                }
+                                if (matchesBinding(data, kb.reject)) {
+                                    oDone({ action: "reject" });
+                                    return;
+                                }
+                                if (matchesBinding(data, kb.steer)) {
+                                    oDone({ action: "steer" });
+                                    return;
+                                }
+                                if (matchesBinding(data, kb.autoApprove)) {
+                                    oDone({ action: "approve_and_enable_auto", afterTextOverride: oViewer.getAfterTextOverride() });
+                                    return;
+                                }
+
+                                if (oViewer.handleInput(data)) {
+                                    oSyncCursor();
+                                    oTui.requestRender();
+                                }
+                            },
+                            dispose: () => oTui.setShowHardwareCursor(oPrevCursor),
+                        };
+                    },
+                    {
+                        overlay: true,
+                        overlayOptions: {
+                            anchor: "center",
+                            width: expandedWidth as SizeValue,
+                            maxHeight: expandedHeight as SizeValue,
+                            minWidth: 20,
+                            margin: expandedWidth === "100%" ? 0 : 1,
+                        },
+                    },
+                ).then((overlayDecision) => {
+                    if ((overlayDecision as any).action === "collapse") return;
+                    done(overlayDecision as DiffDecision);
+                });
+            };
 
             return {
                 render: (width: number) => framed.render(width),
@@ -1399,19 +1603,23 @@ export async function reviewChangePreview(
                         return;
                     }
 
-                    if (matchesKey(data, "return") || data === "a" || data === "y") {
+                    if (matchesBinding(data, kb.toggleExpand)) {
+                        launchOverlay();
+                        return;
+                    }
+                    if (matchesBinding(data, kb.approve)) {
                         done({ action: "approve", afterTextOverride: viewer.getAfterTextOverride() });
                         return;
                     }
-                    if (matchesKey(data, "escape") || data === "r") {
+                    if (matchesBinding(data, kb.reject)) {
                         done({ action: "reject" });
                         return;
                     }
-                    if (data === "s") {
+                    if (matchesBinding(data, kb.steer)) {
                         done({ action: "steer" });
                         return;
                     }
-                    if (data === "A") {
+                    if (matchesBinding(data, kb.autoApprove)) {
                         done({ action: "approve_and_enable_auto", afterTextOverride: viewer.getAfterTextOverride() });
                         return;
                     }
@@ -1425,13 +1633,7 @@ export async function reviewChangePreview(
             };
         },
         {
-            overlay: true,
-            overlayOptions: {
-                anchor: "center",
-                width: "96%",
-                minWidth: 20,
-                margin: 1,
-            },
+            overlay: false,
         },
     );
 
