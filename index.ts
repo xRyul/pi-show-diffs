@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { CONFIG_PATH, loadConfig, saveConfig, type DiffApprovalConfig } from "./src/config.js";
+import { CONFIG_PATH, DEFAULT_KEYBINDINGS, loadConfig, saveConfig, type DiffApprovalConfig, type DiffKeybindings } from "./src/config.js";
 import { detectLineEnding, generateDiffString, restoreLineEndings, stripBom } from "./src/diff-utils.js";
 import { computeChangePreview, type ChangePreview, type PreviewToolName } from "./src/preview.js";
 import { reviewChangePreview } from "./src/ui.js";
@@ -46,7 +46,46 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		ctx.ui.notify(statusText(), "info");
 	}
 
+	function formatKeys(keys: string[] | false): string {
+		if (keys === false) return "disabled";
+		return keys.join(", ");
+	}
+
+	function keybindingLabel(action: keyof DiffKeybindings): string {
+		const labels: Record<keyof DiffKeybindings, string> = {
+			approve: "Approve",
+			reject: "Reject",
+			steer: "Steer",
+			editInline: "Edit inline",
+			autoApprove: "Auto-approve",
+			scrollUp: "Scroll up",
+			scrollDown: "Scroll down",
+			pageUp: "Page up",
+			pageDown: "Page down",
+			scrollTop: "Scroll to top",
+			scrollBottom: "Scroll to bottom",
+			nextHunk: "Next hunk",
+			prevHunk: "Previous hunk",
+			toggleMode: "Toggle mode",
+			toggleWrap: "Toggle wrap",
+			toggleExpand: "Toggle expand",
+			contextMore: "More context",
+			contextLess: "Less context",
+		};
+		return labels[action];
+	}
+
+	function countCustomKeybindings(): number {
+		const kb = config.keybindings;
+		return (Object.keys(DEFAULT_KEYBINDINGS) as (keyof DiffKeybindings)[]).filter((key) => {
+			const current = kb[key];
+			const defaultVal = DEFAULT_KEYBINDINGS[key];
+			return JSON.stringify(current) !== JSON.stringify(defaultVal);
+		}).length;
+	}
+
 	function statusText(): string {
+		const customCount = countCustomKeybindings();
 		return [
 			"pi-show-diffs",
 			`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
@@ -54,6 +93,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			`Collapsed height: ${config.collapsedHeight}`,
 			`Expanded height: ${config.expandedHeight}`,
 			`Expanded width: ${config.expandedWidth}`,
+			`Keybindings: ${customCount === 0 ? "all defaults" : `${customCount} customized`}`,
 			`Config: ${CONFIG_PATH}`,
 		].join("\n");
 	}
@@ -93,6 +133,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 				`Collapsed height (${config.collapsedHeight})`,
 				`Expanded height (${config.expandedHeight})`,
 				`Expanded width (${config.expandedWidth})`,
+				"Configure keybindings",
 				"Show status",
 				"Cancel",
 			],
@@ -136,9 +177,55 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			return;
 		}
 
+		if (choice === "Configure keybindings") {
+			await handleKeybindingsMenu(ctx);
+			return;
+		}
+
 		if (choice === "Show status") {
 			notifyStatus(ctx);
 		}
+	}
+
+	async function handleKeybindingsMenu(ctx: ExtensionContext) {
+		const actions = Object.keys(DEFAULT_KEYBINDINGS) as (keyof DiffKeybindings)[];
+		const options = [
+			...actions.map((action) => `${keybindingLabel(action)}: ${formatKeys(config.keybindings[action])}`),
+			"Reset all to defaults",
+			"Back",
+		];
+
+		const kbChoice = await ctx.ui.select("Configure keybindings", options);
+		if (!kbChoice || kbChoice === "Back") return;
+
+		if (kbChoice === "Reset all to defaults") {
+			setConfig({ keybindings: { ...DEFAULT_KEYBINDINGS } }, ctx);
+			return;
+		}
+
+		const selectedAction = actions.find(
+			(action) => kbChoice.startsWith(keybindingLabel(action)),
+		);
+		if (!selectedAction) return;
+
+		const current = config.keybindings[selectedAction];
+		const currentStr = current === false ? "false" : current.join(", ");
+		const value = await ctx.ui.editor(
+			`${keybindingLabel(selectedAction)} keys (comma-separated, or "false" to disable)`,
+			currentStr,
+		);
+		if (value === undefined || value === null) return;
+
+		const trimmed = value.trim();
+		if (!trimmed) return;
+
+		const newKeys: string[] | false =
+			trimmed.toLowerCase() === "false"
+				? false
+				: trimmed.split(",").map((k) => k.trim()).filter(Boolean);
+
+		const updatedKeybindings = { ...config.keybindings, [selectedAction]: newKeys };
+		setConfig({ keybindings: updatedKeybindings }, ctx);
 	}
 
 	function getRejectionReason(preview: ChangePreview, feedback?: string) {
