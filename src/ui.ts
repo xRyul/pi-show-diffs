@@ -1,4 +1,5 @@
 import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import { t } from "./i18n.js";
 import {
     CURSOR_MARKER,
     Editor,
@@ -573,17 +574,17 @@ class DiffViewer implements Component {
     private buildHeaderLines(width: number, mode: ViewMode, currentHunkIndex: number, totalHunks: number): string[] {
         const modeLabel = this.preferredMode === mode ? mode : `${mode} (auto)`;
         const diffLine = [
-            `${this.theme.fg("muted", "Diff:")} ${this.theme.fg("success", `+${this.preview.additions}`)} ${this.theme.fg("dim", "/")} ${this.theme.fg("error", `-${this.preview.deletions}`)}`,
+            `${this.theme.fg("muted", t("ui.diff", "Diff:"))} ${this.theme.fg("success", `+${this.preview.additions}`)} ${this.theme.fg("dim", "/")} ${this.theme.fg("error", `-${this.preview.deletions}`)}`,
             this.theme.fg("muted", this.formatHunkLabel(currentHunkIndex, totalHunks)),
-            `${this.theme.fg("muted", "View:")} ${this.theme.fg("text", modeLabel)}`,
-            `${this.theme.fg("muted", "Context:")} ${this.theme.fg("text", this.diffModel ? String(this.inlineEditMode ? "all" : this.contextLines) : "—")}`,
-            `${this.theme.fg("muted", "Wrap:")} ${this.theme.fg("text", this.wrapLongLines ? "on" : "off")}`,
+            `${this.theme.fg("muted", t("ui.view", "View:"))} ${this.theme.fg("text", modeLabel)}`,
+            `${this.theme.fg("muted", t("ui.context", "Context:"))} ${this.theme.fg("text", this.diffModel ? String(this.inlineEditMode ? "all" : this.contextLines) : "—")}`,
+            `${this.theme.fg("muted", t("ui.wrap", "Wrap:"))} ${this.theme.fg("text", this.wrapLongLines ? "on" : "off")}`,
         ].join(` ${this.theme.fg("dim", "•")} `);
-        const toolAndPath = `${this.theme.fg("muted", "Tool:")} ${this.theme.fg("text", normalizeTuiText(this.preview.toolName))} ${this.theme.fg("dim", "•")} ${this.theme.fg("muted", "Path:")} ${this.theme.fg("text", normalizeTuiText(this.preview.path))}`;
+        const toolAndPath = `${this.theme.fg("muted", t("ui.tool", "Tool:"))} ${this.theme.fg("text", normalizeTuiText(this.preview.toolName))} ${this.theme.fg("dim", "•")} ${this.theme.fg("muted", t("ui.path", "Path:"))} ${this.theme.fg("text", normalizeTuiText(this.preview.path))}`;
         const summaryLine = this.preview.previewError
-            ? this.theme.fg("warning", `Preview warning: ${normalizeTuiText(this.preview.previewError)}`)
+            ? this.theme.fg("warning", t("ui.previewWarning", `Preview warning: ${normalizeTuiText(this.preview.previewError)}`, { message: normalizeTuiText(this.preview.previewError) }))
             : this.theme.fg("dim", summarizeLines(this.preview.summaryLines));
-        const title = this.inlineEditMode ? "Review proposed file change · INLINE EDIT" : "Review proposed file change";
+        const title = this.inlineEditMode ? t("ui.titleEdit", "Review proposed file change · INLINE EDIT") : t("ui.title", "Review proposed file change");
 
         return [
             truncateToWidth(this.theme.bold(this.theme.fg("accent", title)), width, "", false),
@@ -596,8 +597,8 @@ class DiffViewer implements Component {
     private buildColumnLines(width: number, mode: ViewMode): string[] {
         if (mode !== "split") return [];
         const split = this.getSplitLayout(width);
-        const leftHeader = truncateToWidth(this.theme.bold(this.theme.fg("muted", "Original")), split.leftWidth, "", true);
-        const rightTitle = this.inlineEditMode ? this.theme.fg("accent", "Updated (editing)") : this.theme.fg("muted", "Updated");
+        const leftHeader = truncateToWidth(this.theme.bold(this.theme.fg("muted", t("ui.original", "Original"))), split.leftWidth, "", true);
+        const rightTitle = this.inlineEditMode ? this.theme.fg("accent", t("ui.updatedEditing", "Updated (editing)")) : this.theme.fg("muted", t("ui.updated", "Updated"));
         const rightHeader = truncateToWidth(this.theme.bold(rightTitle), split.rightWidth, "", true);
         const divider = this.theme.fg(
             "borderMuted",
@@ -629,13 +630,13 @@ class DiffViewer implements Component {
             "←/→ context",
             "Tab split/unified",
             "w wrap",
-            "Enter/y approve",
-            "r/Esc reject",
-            "s steer",
-            "Shift+A auto",
+            t("ui.footerApprove", "Enter/y approve"),
+            t("ui.footerReject", "r/Esc reject"),
+            t("ui.footerSteer", "s steer"),
+            t("ui.footerAuto", "Shift+A auto"),
         ];
         if (this.allowAfterEdit) {
-            parts.splice(parts.length - 3, 0, "E edit inline");
+            parts.splice(parts.length - 3, 0, t("ui.footerEdit", "E edit inline"));
         }
         if (!this.diffModel) {
             parts.splice(0, 2, "↑↓ scroll", "PgUp/PgDn jump");
@@ -1334,12 +1335,12 @@ export async function reviewChangePreview(
         while (true) {
             await ctx.ui.editor(
                 [
-                    "Review proposed file change",
+                    t("ui.title", "Review proposed file change"),
                     `Tool: ${currentPreview.toolName}`,
                     `Path: ${currentPreview.path}`,
                     `Diff: +${currentPreview.additions} / -${currentPreview.deletions}`,
                     ...currentPreview.summaryLines.map((line) => `- ${line}`),
-                    currentPreview.previewError ? `Preview warning: ${currentPreview.previewError}` : "",
+                    currentPreview.previewError ? t("ui.previewWarning", `Preview warning: ${currentPreview.previewError}`, { message: currentPreview.previewError }) : "",
                 ]
                     .filter(Boolean)
                     .join("\n"),

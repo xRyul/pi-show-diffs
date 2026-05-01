@@ -8,6 +8,7 @@ import { CONFIG_PATH, loadConfig, saveConfig, type DiffApprovalConfig } from "./
 import { detectLineEnding, generateDiffString, restoreLineEndings, stripBom } from "./src/diff-utils.js";
 import { computeChangePreview, type ChangePreview, type PreviewToolName } from "./src/preview.js";
 import { reviewChangePreview } from "./src/ui.js";
+import { initI18n, t } from "./src/i18n.js";
 
 const STATUS_KEY = "pi-show-diffs";
 const TOOL_CALL_REVIEWED_TOOLS = new Set<PreviewToolName>(["edit", "hashline_edit", "write"]);
@@ -18,6 +19,7 @@ interface PendingImmediateApply {
 }
 
 export default function showDiffsExtension(pi: ExtensionAPI) {
+	initI18n(pi);
 	let config = loadConfig();
 	const pendingImmediateApplies = new Map<string, PendingImmediateApply>();
 
@@ -33,7 +35,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		if (!ctx.hasUI) return;
 		ctx.ui.setStatus(
 			STATUS_KEY,
-			config.autoApprove ? ctx.ui.theme.fg("warning", "✍ auto-approve file changes") : undefined,
+			config.autoApprove ? ctx.ui.theme.fg("warning", t("status.auto", "✍ auto-approve file changes")) : undefined,
 		);
 	}
 
@@ -44,7 +46,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		updateStatus(ctx);
 		if (!notify || !ctx.hasUI) return;
 		ctx.ui.notify(
-			config.autoApprove ? "Auto-approve is ON for file changes." : "Manual diff review is ON.",
+			config.autoApprove ? t("notify.autoOn", "Auto-approve is ON for file changes.") : t("notify.manualOn", "Manual diff review is ON."),
 			"info",
 		);
 	}
@@ -71,7 +73,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					"pi-show-diffs",
-					`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
+					`Mode: ${config.autoApprove ? t("mode.auto", "auto-approve") : t("mode.manual", "manual review")}`,
 					`Config: ${CONFIG_PATH}`,
 				].join("\n"),
 				"info",
@@ -82,31 +84,31 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		const choice = await ctx.ui.select(
 			[
 				"pi-show-diffs",
-				`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
+				`Mode: ${config.autoApprove ? t("mode.auto", "auto-approve") : t("mode.manual", "manual review")}`,
 				`Config: ${CONFIG_PATH}`,
 			].join("\n"),
 			[
-				config.autoApprove ? "Turn auto-approve off" : "Turn auto-approve on",
-				"Show status",
-				"Cancel",
+				config.autoApprove ? t("select.turnAutoOff", "Turn auto-approve off") : t("select.turnAutoOn", "Turn auto-approve on"),
+				t("select.status", "Show status"),
+				t("select.cancel", "Cancel"),
 			],
 		);
 
-		if (choice === "Turn auto-approve on") {
+		if (choice === t("select.turnAutoOn", "Turn auto-approve on")) {
 			setConfig({ autoApprove: true }, ctx);
 			return;
 		}
 
-		if (choice === "Turn auto-approve off") {
+		if (choice === t("select.turnAutoOff", "Turn auto-approve off")) {
 			setConfig({ autoApprove: false }, ctx);
 			return;
 		}
 
-		if (choice === "Show status") {
+		if (choice === t("select.status", "Show status")) {
 			ctx.ui.notify(
 				[
 					"pi-show-diffs",
-					`Mode: ${config.autoApprove ? "auto-approve" : "manual review"}`,
+					`Mode: ${config.autoApprove ? t("mode.auto", "auto-approve") : t("mode.manual", "manual review")}`,
 					`Config: ${CONFIG_PATH}`,
 				].join("\n"),
 				"info",
@@ -209,12 +211,12 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 	}
 
 	pi.registerCommand("diff-approval", {
-		description: "Toggle or inspect diff approval mode",
+		description: t("cmd.diffApproval", "Toggle or inspect diff approval mode"),
 		handler: handleCommand,
 	});
 
 	pi.registerCommand("show-diffs", {
-		description: "Alias for /diff-approval",
+		description: t("cmd.showDiffs", "Alias for /diff-approval"),
 		handler: handleCommand,
 	});
 
