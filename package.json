@@ -38,7 +38,8 @@
     "video": "https://github.com/user-attachments/assets/8bda7619-fcd2-4615-a93a-d15b2fee408b"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "cli-highlight": "^2.1.11",

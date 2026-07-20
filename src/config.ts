@@ -46,6 +46,8 @@ export const DEFAULT_KEYBINDINGS: DiffKeybindings = {
 	contextLess: ["left", "["],
 };
 
+export type PathStyle = "full" | "short";
+
 export interface DiffApprovalConfig {
 	autoApprove: boolean;
 	diffColorMode: DiffColorMode;
@@ -54,6 +56,8 @@ export interface DiffApprovalConfig {
 	collapsedHeight: string;
 	expandedHeight: string;
 	expandedWidth: string;
+	pathStyle: PathStyle;
+	pathSegments: number;
 	keybindings: DiffKeybindings;
 }
 
@@ -65,6 +69,8 @@ export const DEFAULT_CONFIG: DiffApprovalConfig = {
 	collapsedHeight: "30%",
 	expandedHeight: "100%",
 	expandedWidth: "100%",
+	pathStyle: "full",
+	pathSegments: 3,
 	keybindings: { ...DEFAULT_KEYBINDINGS },
 };
 
@@ -72,6 +78,14 @@ export const CONFIG_PATH = join(getAgentDir(), "extensions", "pi-show-diffs.json
 
 function parseDiffColorMode(value: unknown): DiffColorMode {
 	return value === "theme" ? "theme" : "default";
+}
+
+function parsePathStyle(value: unknown): PathStyle {
+	return value === "short" ? "short" : "full";
+}
+
+function parsePathSegments(value: unknown): number {
+	return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : DEFAULT_CONFIG.pathSegments;
 }
 
 function formatPercent(value: number): string {
@@ -137,6 +151,8 @@ export function normalizeConfig(config: Partial<DiffApprovalConfig> = {}): DiffA
 		collapsedHeight: parsePercentConfig(config.collapsedHeight, DEFAULT_CONFIG.collapsedHeight),
 		expandedHeight: parsePercentConfig(config.expandedHeight, DEFAULT_CONFIG.expandedHeight),
 		expandedWidth: parsePercentConfig(config.expandedWidth, DEFAULT_CONFIG.expandedWidth),
+		pathStyle: parsePathStyle(config.pathStyle),
+		pathSegments: parsePathSegments(config.pathSegments),
 		keybindings: parseKeybindings(config.keybindings),
 	};
 }

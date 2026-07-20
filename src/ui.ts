@@ -20,8 +20,9 @@ import {
     type StructuredDiffRow,
     type StructuredDiffVisibleItem,
 } from "./diff-utils.js";
-import { DEFAULT_KEYBINDINGS, type DiffColorMode, type DiffKeybindings } from "./config.js";
+import { DEFAULT_KEYBINDINGS, type DiffColorMode, type DiffKeybindings, type PathStyle } from "./config.js";
 import { rebuildPreviewAfterManualEdit, type ChangePreview } from "./preview.js";
+import { formatDisplayPath } from "./path-display.js";
 import { detectSyntaxLanguage, tokenizeSyntaxLine, type SyntaxSegment } from "./syntax-highlight.js";
 
 export interface DiffDecision {
@@ -38,6 +39,8 @@ interface ReviewOptions {
     collapsedHeight?: string;
     expandedHeight?: string;
     expandedWidth?: string;
+    pathStyle?: PathStyle;
+    pathSegments?: number;
     keybindings?: DiffKeybindings;
 }
 
@@ -348,6 +351,8 @@ class DiffViewer implements Component {
         private readonly expandedHeightPercent: number = 100,
         private readonly expandableLayoutHint: boolean = false,
         keybindings?: DiffKeybindings,
+        private readonly pathStyle: PathStyle = "full",
+        private readonly pathSegments: number = 3,
     ) {
         this.kb = keybindings ?? DEFAULT_KEYBINDINGS;
         this.diffBackgrounds = getDiffBackgrounds(theme, diffColorMode);
@@ -726,7 +731,8 @@ class DiffViewer implements Component {
             `${this.theme.fg("muted", t("ui.context", "Context:"))} ${this.theme.fg("text", this.diffModel ? String(this.inlineEditMode ? "all" : this.contextLines) : "—")}`,
             `${this.theme.fg("muted", t("ui.wrap", "Wrap:"))} ${this.theme.fg("text", this.wrapLongLines ? "on" : "off")}`,
         ].join(` ${this.theme.fg("dim", "•")} `);
-        const toolAndPath = `${this.theme.fg("muted", t("ui.tool", "Tool:"))} ${this.theme.fg("text", normalizeTuiText(this.preview.toolName))} ${this.theme.fg("dim", "•")} ${this.theme.fg("muted", t("ui.path", "Path:"))} ${this.theme.fg("text", normalizeTuiText(this.preview.path))}`;
+        const displayPath = formatDisplayPath(this.preview.path, this.pathStyle, this.pathSegments);
+        const toolAndPath = `${this.theme.fg("muted", t("ui.tool", "Tool:"))} ${this.theme.fg("text", normalizeTuiText(this.preview.toolName))} ${this.theme.fg("dim", "•")} ${this.theme.fg("muted", t("ui.path", "Path:"))} ${this.theme.fg("text", normalizeTuiText(displayPath))}`;
         const summaryLine = this.preview.previewError
             ? this.theme.fg("warning", t("ui.previewWarning", `Preview warning: ${normalizeTuiText(this.preview.previewError)}`, { message: normalizeTuiText(this.preview.previewError) }))
             : this.theme.fg("dim", summarizeLines(this.preview.summaryLines));
@@ -1558,6 +1564,8 @@ export async function reviewChangePreview(
     const expandedWidthPercent = parsePercentOption(options.expandedWidth, 100);
     const expandedHeight = percentSizeValue(expandedHeightPercent);
     const expandedWidth = percentSizeValue(expandedWidthPercent);
+    const pathStyle = options.pathStyle ?? "full";
+    const pathSegments = options.pathSegments ?? 3;
     const kb = options.keybindings ?? DEFAULT_KEYBINDINGS;
 
     const matchesBinding = (data: string, binding: string[] | false | undefined): boolean => {
@@ -1599,7 +1607,7 @@ export async function reviewChangePreview(
                 [
                     t("ui.title", "Review proposed file change"),
                     `${t("ui.tool", "Tool:")} ${currentPreview.toolName}`,
-                    `${t("ui.path", "Path:")} ${currentPreview.path}`,
+                    `${t("ui.path", "Path:")} ${formatDisplayPath(currentPreview.path, pathStyle, pathSegments)}`,
                     `${t("ui.diff", "Diff:")} +${currentPreview.additions} / -${currentPreview.deletions}`,
                     ...currentPreview.summaryLines.map((line) => `- ${line}`),
                     currentPreview.previewError ? t("ui.previewWarning", `Preview warning: ${currentPreview.previewError}`, { message: currentPreview.previewError }) : "",
@@ -1645,7 +1653,7 @@ export async function reviewChangePreview(
     if (!expandableLayout) {
         const decision = await ctx.ui.custom<DiffDecision>(
             (tui, theme, _kb, done) => {
-                const viewer = new DiffViewer(tui, theme, currentPreview, allowAfterEdit, diffColorMode, showDiffRail, 90, 100, false, kb);
+                const viewer = new DiffViewer(tui, theme, currentPreview, allowAfterEdit, diffColorMode, showDiffRail, 90, 100, false, kb, pathStyle, pathSegments);
                 const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
                 const previousShowHardwareCursor = tui.getShowHardwareCursor();
                 const syncCursorMode = () => tui.setShowHardwareCursor(viewer.isEditingInline() || previousShowHardwareCursor);
@@ -1718,6 +1726,8 @@ export async function reviewChangePreview(
                 100,
                 true,
                 kb,
+                pathStyle,
+                pathSegments,
             );
             const framed = new BorderFrame(viewer, (text) => theme.fg("accent", text));
             const previousShowHardwareCursor = tui.getShowHardwareCursor();
@@ -1742,6 +1752,8 @@ export async function reviewChangePreview(
                             expandedHeightPercent,
                             true,
                             kb,
+                            pathStyle,
+                            pathSegments,
                         );
                         overlayViewer = oViewer;
                         oViewer.setExpanded(true);

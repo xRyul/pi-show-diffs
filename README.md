@@ -101,6 +101,8 @@ Current config shape:
   "collapsedHeight": "30%",
   "expandedHeight": "100%",
   "expandedWidth": "100%",
+  "pathStyle": "full",
+  "pathSegments": 3,
   "keybindings": {
     "approve": ["Enter", "a", "y"],
     "reject": ["Escape", "r"]
@@ -123,6 +125,11 @@ Expandable layout options:
 - `collapsedHeight` — inline diff height as a percentage string, clamped to `10%`-`100%`.
 - `expandedHeight` — maximum overlay height after `Ctrl+F`, clamped to `10%`-`100%`.
 - `expandedWidth` — overlay width after `Ctrl+F`, clamped to `10%`-`100%`.
+
+Path display options:
+
+- `pathStyle` — `"full"` (default) shows the entire path in the diff header; `"short"` keeps only the last few segments with a leading `…/`, for example `…/components/ui/button.tsx`.
+- `pathSegments` — how many trailing segments the short form keeps (default `3`); paths with that many segments or fewer are shown unchanged.
 
 Keybindings are configured per action. Use comma-separated pi-tui key ids such as `Enter`, `Escape`, `ctrl+f`, `pageUp`, or `up`; set an action to `false` to disable it. Missing actions fall back to defaults.
 

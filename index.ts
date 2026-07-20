@@ -42,6 +42,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			`Collapsed height: ${config.collapsedHeight}`,
 			`Expanded height: ${config.expandedHeight}`,
 			`Expanded width: ${config.expandedWidth}`,
+			`Path display: ${config.pathStyle === "short" ? `short (last ${config.pathSegments})` : "full"}`,
 			`Keybindings: ${keybindingSummary()}`,
 			`Config: ${CONFIG_PATH}`,
 		];
@@ -226,6 +227,20 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 				description: "Overlay width after pressing Ctrl+F in expandable layout.",
 			},
 			{
+				id: "pathStyle",
+				label: "Path display",
+				currentValue: config.pathStyle,
+				values: ["full", "short"],
+				description: "full = entire path; short = last N segments with a leading …/ in the diff header.",
+			},
+			{
+				id: "pathSegments",
+				label: "Short path segments",
+				currentValue: String(config.pathSegments),
+				values: valuesWithCurrent(String(config.pathSegments), ["2", "3", "4", "5"]),
+				description: "How many trailing path segments the short display keeps.",
+			},
+			{
 				id: "keybindings",
 				label: "Keybindings",
 				currentValue: keybindingSummary(),
@@ -266,6 +281,13 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 					}
 					if (id === "expandedWidth") {
 						setConfig({ expandedWidth: newValue }, ctx, false);
+					}
+					if (id === "pathStyle") {
+						setConfig({ pathStyle: newValue === "short" ? "short" : "full" }, ctx, false);
+					}
+					if (id === "pathSegments") {
+						const parsed = Number.parseInt(newValue, 10);
+						if (Number.isInteger(parsed) && parsed > 0) setConfig({ pathSegments: parsed }, ctx, false);
 					}
 					if (id === "keybindings") {
 						followUp = "keybindings";
@@ -465,6 +487,8 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			collapsedHeight: config.collapsedHeight,
 			expandedHeight: config.expandedHeight,
 			expandedWidth: config.expandedWidth,
+			pathStyle: config.pathStyle,
+			pathSegments: config.pathSegments,
 			keybindings: config.keybindings,
 		});
 
